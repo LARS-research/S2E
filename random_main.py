@@ -141,12 +141,13 @@ def adjust_learning_rate(optimizer, epoch):
 '''
 num_gradual=10
 target_rate=forget_rate
-final_rate=forget_rate
+final_rate=2*forget_rate
 rate_schedule = np.ones(args.n_epoch)*forget_rate
 rate_schedule[:num_gradual]=np.arange(num_gradual,dtype=float)/num_gradual*target_rate
 rate_schedule[num_gradual:]=target_rate+(final_rate-target_rate)*np.arange(args.n_epoch-num_gradual,dtype=float)/(args.n_epoch-num_gradual)
 print 'Schedule:',rate_schedule,num_gradual,target_rate,final_rate
 '''
+
 w1=np.random.rand()
 w2=1-w1
 a1=np.random.randint(100)*0.01
