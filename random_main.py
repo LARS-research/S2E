@@ -148,14 +148,6 @@ rate_schedule[num_gradual:]=target_rate+(final_rate-target_rate)*np.arange(args.
 print 'Schedule:',rate_schedule,num_gradual,target_rate,final_rate
 '''
 
-w1=np.random.rand()
-w2=1-w1
-a1=np.random.randint(100)*0.01
-b1=np.random.rand()*0.5
-a2=np.random.randint(100)*0.01
-b2=np.random.rand()*0.5
-rate_schedule=w1*(1-np.exp(-b1*np.power(np.arange(args.n_epoch,dtype=float),a1)))+w2*(1-1/np.power((b2*np.arange(args.n_epoch,dtype=float)+1),a2))
-print 'Schedule:',rate_schedule,w1,a1,b1,w2,a2,b2
    
 save_dir = args.result_dir +'/' +args.dataset+'/'
 
@@ -183,7 +175,7 @@ def accuracy(logit, target, topk=(1,)):
     return res
 
 # Train the Model
-def train(train_loader,epoch, model1, optimizer1, model2, optimizer2):
+def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_schedule):
     print 'Training %s...' % model_str
     pure_ratio_list=[]
     pure_ratio_1_list=[]
@@ -287,6 +279,15 @@ def main():
     print cnn2.parameters
     optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
 
+    w1=np.random.rand()
+    w2=1-w1
+    a1=np.random.randint(100)*0.01
+    b1=np.random.rand()*0.5
+    a2=np.random.randint(100)*0.01
+    b2=np.random.rand()*0.5
+    rate_schedule=w1*(1-np.exp(-b1*np.power(np.arange(args.n_epoch,dtype=float),a1)))+w2*(1-1/np.power((b2*np.arange(args.n_epoch,dtype=float)+1),a2))
+    print 'Schedule:',rate_schedule,w1,a1,b1,w2,a2,b2
+
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -310,7 +311,7 @@ def main():
         adjust_learning_rate(optimizer1, epoch)
         cnn2.train()
         adjust_learning_rate(optimizer2, epoch)
-        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2)
+        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
         # evaluate models
         test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
         # save results
