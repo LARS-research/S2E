@@ -12,6 +12,9 @@ import argparse, sys
 import numpy as np
 import datetime
 import shutil
+import theano.tensor as tt
+import theano
+import pymc3 as pm
 
 from loss import loss_coteaching
 
@@ -26,6 +29,7 @@ parser.add_argument('--exponent', type = float, default = 1, help='exponent of t
 parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
+parser.add_argument('--hyp_epoch', type=int, default=10)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -267,7 +271,93 @@ def main():
                                               num_workers=args.num_workers,
                                               drop_last=True,
                                               shuffle=False)
-    # Define models
+
+    mean_pure_ratio1=0
+    mean_pure_ratio2=0
+
+    with open(txtfile, "a") as myfile:
+        myfile.write('epoch: train_acc1 train_acc2 test_acc1 test_acc2 pure_ratio1 pure_ratio2 rate_schedule\n')
+
+    prev_prev_hyp = np.zeros(20)
+    prev_hyp = np.zeros(20)
+    prev_prev_acc = 0
+    prev_acc = 0
+    # training
+    for hyp_epoch in range(args.hyp_epoch):
+        print('building model...')
+        cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+        cnn1.cuda()
+        print(cnn1.parameters)
+        optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    
+        cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+        cnn2.cuda()
+        print(cnn2.parameters)
+        optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+
+        if hyp_epoch<2:
+            if hyp_epoch==1:
+                prev_hyp = hyp_param
+            hyp_param = np.random.rand(6)
+            hyp_param[0] = np.random.rand()
+            hyp_param[1] = 1 - hyp_param[1]
+            hyp_param[2] = np.random.randint(100)*0.01
+            hyp_param[3] = np.random.rand()*0.5
+            hyp_param[4] = np.random.randint(100)*0.01
+            hyp_param[5] = np.random.rand()*0.5
+            rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
+        else:
+            prev_prev_hyp = prev_hyp
+            prev_hyp = hyp_param
+            hyp_param = prev_hyp - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp-prev_prev_hyp)
+        print('Schedule:',rate_schedule,hyp_param)
+        epoch=0
+        train_acc1=0
+        train_acc2=0
+        # evaluate models with random weights
+        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+        # save results
+        with open(txtfile, "a") as myfile:
+            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+        real_curve = np.zeros(args.n_epoch)
+        real_curve[0] = (test_acc1+test_acc2)/200
+        for epoch in range(1, int(args.n_epoch/args.hyp_epoch)):
+            # train models
+            cnn1.train()
+            adjust_learning_rate(optimizer1, epoch)
+            cnn2.train()
+            adjust_learning_rate(optimizer2, epoch)
+            train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
+            # evaluate models
+            test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+            # save results
+            mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
+            mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
+            print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+            with open(txtfile, "a") as myfile:
+                myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            real_curve[epoch]=(test_acc1+test_acc2)/200
+        '''
+        time_scale=theano.shared(np.arange(len(real_curve)))
+        with pm.Model() as model:
+            w = pm.Uniform('w', lower=0, upper=1)
+            b0 = pm.Uniform('b0', lower=0, upper=1)
+            b1 = pm.Uniform('b1', lower=0, upper=1)
+            a0 = pm.Uniform('a0', lower=0, upper=1)
+            a1 = pm.Uniform('a1', lower=0, upper=1)
+            obs = pm.Normal('obs', mu=w*( 1-tt.exp( -b0*tt.power( time_scale,a0 ) ) )+(1-w)*( 1-1/tt.power( ( b1*time_scale+1 ),a1 ) ), sigma=1e-4, observed=real_curve)
+    
+            trace = pm.sample(10000,cores=32)
+
+        est_final=( trace['w']*( 1-np.exp( -trace['b0']*np.power( 199,trace['a0'] ) ) )\
++(1-trace['w'])*( 1-1/np.power( ( trace['b1']*199+1 ),trace['a1'] ) ))
+        '''
+        prev_prev_acc = prev_acc
+        # prev_acc = np.mean(est_final)
+        prev_acc = real_curve[epoch]
+        print('Predict accuracy:',prev_prev_acc, prev_acc)
+
     print('building model...')
     cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
     cnn1.cuda()
@@ -278,22 +368,10 @@ def main():
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
-
-    w1=np.random.rand()
-    w2=1-w1
-    a1=np.random.randint(100)*0.01
-    b1=np.random.rand()*0.5
-    a2=np.random.randint(100)*0.01
-    b2=np.random.rand()*0.5
-    rate_schedule=w1*(1-np.exp(-b1*np.power(np.arange(args.n_epoch,dtype=float),a1)))+w2*(1-1/np.power((b2*np.arange(args.n_epoch,dtype=float)+1),a2))
-    print('Schedule:',rate_schedule,w1,a1,b1,w2,a2,b2)
-
-    mean_pure_ratio1=0
-    mean_pure_ratio2=0
-
-    with open(txtfile, "a") as myfile:
-        myfile.write('epoch: train_acc1 train_acc2 test_acc1 test_acc2 pure_ratio1 pure_ratio2 rate_schedule\n')
-
+    
+    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
+    print('Schedule:',rate_schedule,hyp_param)
+    
     epoch=0
     train_acc1=0
     train_acc2=0
