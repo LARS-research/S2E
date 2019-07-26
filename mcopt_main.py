@@ -309,7 +309,17 @@ def main():
         else:
             prev_prev_hyp = prev_hyp
             prev_hyp = hyp_param
-            hyp_param = prev_hyp - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp-prev_prev_hyp)
+            hyp_param[0] = prev_hyp[0] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
+            hyp_param[2] = prev_hyp[2] - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
+            hyp_param[3] = prev_hyp[3] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
+            hyp_param[4] = prev_hyp[4] - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
+            hyp_param[5] = prev_hyp[5] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
+            hyp_param[0] = max(min(hyp_param[0],1),0)
+            hyp_param[1] = 1-hyp_param[0]
+            hyp_param[2] = max(min(hyp_param[2],1),0)
+            hyp_param[3] = max(min(hyp_param[3],0.5),0)
+            hyp_param[4] = max(min(hyp_param[4],1),0)
+            hyp_param[5] = max(min(hyp_param[5],0.5),0)
         print('Schedule:',rate_schedule,hyp_param)
         epoch=0
         train_acc1=0
