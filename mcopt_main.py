@@ -300,7 +300,7 @@ def main():
                 prev_hyp = hyp_param
             hyp_param = np.random.rand(6)
             hyp_param[0] = np.random.rand()
-            hyp_param[1] = 1 - hyp_param[1]
+            hyp_param[1] = 1 - hyp_param[0]
             hyp_param[2] = np.random.randint(100)*0.01
             hyp_param[3] = np.random.rand()*0.5
             hyp_param[4] = np.random.randint(100)*0.01
@@ -309,11 +309,11 @@ def main():
         else:
             prev_prev_hyp = prev_hyp
             prev_hyp = hyp_param
-            hyp_param[0] = prev_hyp[0] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
-            hyp_param[2] = prev_hyp[2] - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
-            hyp_param[3] = prev_hyp[3] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
-            hyp_param[4] = prev_hyp[4] - 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
-            hyp_param[5] = prev_hyp[5] - 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
+            hyp_param[0] = prev_hyp[0] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
+            hyp_param[2] = prev_hyp[2] + 5e-2*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
+            hyp_param[3] = prev_hyp[3] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
+            hyp_param[4] = prev_hyp[4] + 5e-2*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
+            hyp_param[5] = prev_hyp[5] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
             hyp_param[0] = max(min(hyp_param[0],1),0)
             hyp_param[1] = 1-hyp_param[0]
             hyp_param[2] = max(min(hyp_param[2],1),0)
