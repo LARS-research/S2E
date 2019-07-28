@@ -147,7 +147,6 @@ rate_schedule[:num_gradual]=np.arange(num_gradual,dtype=float)/num_gradual*targe
 rate_schedule[num_gradual:]=target_rate+(final_rate-target_rate)*np.arange(args.n_epoch-num_gradual,dtype=float)/(args.n_epoch-num_gradual)
 print 'Schedule:',rate_schedule,num_gradual,target_rate,final_rate
 '''
-
    
 save_dir = args.result_dir +'/' +args.dataset+'/'
 
@@ -278,7 +277,7 @@ def main():
     cnn2.cuda()
     print cnn2.parameters
     optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
-
+    '''
     w1=np.random.rand()
     w2=1-w1
     a1=np.random.randint(100)*0.01
@@ -287,7 +286,8 @@ def main():
     b2=np.random.rand()*0.5
     rate_schedule=w1*(1-np.exp(-b1*np.power(np.arange(args.n_epoch,dtype=float),a1)))+w2*(1-1/np.power((b2*np.arange(args.n_epoch,dtype=float)+1),a2))
     print 'Schedule:',rate_schedule,w1,a1,b1,w2,a2,b2
-
+    '''
+    rate_schedule=np.zeros(args.n_epoch)
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 

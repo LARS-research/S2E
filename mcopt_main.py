@@ -220,7 +220,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         loss_2.backward()
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
-            print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4F, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
+            print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
                   %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
@@ -301,25 +301,25 @@ def main():
             hyp_param = np.random.rand(6)
             hyp_param[0] = np.random.rand()
             hyp_param[1] = 1 - hyp_param[0]
-            hyp_param[2] = np.random.randint(100)*0.01
+            hyp_param[2] = np.random.rand()
             hyp_param[3] = np.random.rand()*0.5
-            hyp_param[4] = np.random.randint(100)*0.01
+            hyp_param[4] = np.random.rand()
             hyp_param[5] = np.random.rand()*0.5
-            rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
         else:
             prev_prev_hyp = prev_hyp
             prev_hyp = hyp_param
-            hyp_param[0] = prev_hyp[0] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
-            hyp_param[2] = prev_hyp[2] + 5e-2*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
-            hyp_param[3] = prev_hyp[3] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
-            hyp_param[4] = prev_hyp[4] + 5e-2*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
-            hyp_param[5] = prev_hyp[5] + 1e-1*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
+            hyp_param[0] = prev_hyp[0] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
+            hyp_param[2] = prev_hyp[2] + 0.05*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
+            hyp_param[3] = prev_hyp[3] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
+            hyp_param[4] = prev_hyp[4] + 0.05*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
+            hyp_param[5] = prev_hyp[5] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
             hyp_param[0] = max(min(hyp_param[0],1),0)
             hyp_param[1] = 1-hyp_param[0]
             hyp_param[2] = max(min(hyp_param[2],1),0)
             hyp_param[3] = max(min(hyp_param[3],0.5),0)
             hyp_param[4] = max(min(hyp_param[4],1),0)
             hyp_param[5] = max(min(hyp_param[5],0.5),0)
+        rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
         print('Schedule:',rate_schedule,hyp_param)
         epoch=0
         train_acc1=0
