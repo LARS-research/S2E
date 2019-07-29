@@ -278,8 +278,8 @@ def main():
     with open(txtfile, "a") as myfile:
         myfile.write('epoch: train_acc1 train_acc2 test_acc1 test_acc2 pure_ratio1 pure_ratio2 rate_schedule\n')
 
-    prev_prev_hyp = np.zeros(20)
-    prev_hyp = np.zeros(20)
+    prev_prev_hyp = np.zeros(6)
+    prev_hyp = np.zeros(6)
     prev_prev_acc = 0
     prev_acc = 0
     # training
@@ -297,7 +297,7 @@ def main():
 
         if hyp_epoch<2:
             if hyp_epoch==1:
-                prev_hyp = hyp_param
+                prev_hyp = hyp_param.copy()
             hyp_param = np.random.rand(6)
             hyp_param[0] = np.random.rand()
             hyp_param[1] = 1 - hyp_param[0]
@@ -306,13 +306,14 @@ def main():
             hyp_param[4] = np.random.rand()
             hyp_param[5] = np.random.rand()*0.5
         else:
-            prev_prev_hyp = prev_hyp
-            prev_hyp = hyp_param
-            hyp_param[0] = prev_hyp[0] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
-            hyp_param[2] = prev_hyp[2] + 0.05*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
-            hyp_param[3] = prev_hyp[3] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
-            hyp_param[4] = prev_hyp[4] + 0.05*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
-            hyp_param[5] = prev_hyp[5] + 0.1*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
+            prev_prev_hyp = prev_hyp.copy()
+            prev_hyp = hyp_param.copy()
+            print(prev_prev_hyp,prev_hyp)
+            hyp_param[0] = prev_hyp[0] + 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[0]-prev_prev_hyp[0])
+            hyp_param[2] = prev_hyp[2] + 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[2]-prev_prev_hyp[2])
+            hyp_param[3] = prev_hyp[3] + 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[3]-prev_prev_hyp[3])
+            hyp_param[4] = prev_hyp[4] + 5e-3*(prev_acc-prev_prev_acc)/(prev_hyp[4]-prev_prev_hyp[4])
+            hyp_param[5] = prev_hyp[5] + 1e-2*(prev_acc-prev_prev_acc)/(prev_hyp[5]-prev_prev_hyp[5])
             hyp_param[0] = max(min(hyp_param[0],1),0)
             hyp_param[1] = 1-hyp_param[0]
             hyp_param[2] = max(min(hyp_param[2],1),0)
