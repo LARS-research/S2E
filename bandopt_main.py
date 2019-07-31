@@ -14,7 +14,6 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
-from bayes_opt import BayesianOptimization
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.1)
@@ -26,8 +25,7 @@ parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=20)
-parser.add_argument('--n_init', type=int, default=10)
-parser.add_argument('--n_iter', type=int, default=0)
+parser.add_argument('--eta', type=int, default=3)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -142,7 +140,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str=args.dataset+'_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
+model_str=args.dataset+'_band_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -253,15 +251,8 @@ def evaluate(test_loader, model1, model2):
     acc2 = 100*float(correct2)/float(total2)
     return acc1, acc2
 
-def black_box_function(w,a1,b1,a2,b2):
-    hyp_param=np.zeros(6)
-    hyp_param[0]=w
-    hyp_param[1]=1-w
-    hyp_param[2]=b1
-    hyp_param[3]=a1
-    hyp_param[4]=b2
-    hyp_param[5]=a2
-
+def black_box_function(hyp_param,resources):
+    resources=int(resources)
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -290,7 +281,7 @@ def black_box_function(w,a1,b1,a2,b2):
         myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     # training
-    for epoch in range(1, args.test_epoch):
+    for epoch in range(1, resources):
         # train models
         cnn1.train()
         adjust_learning_rate(optimizer1, epoch)
@@ -309,22 +300,31 @@ def black_box_function(w,a1,b1,a2,b2):
     return (test_acc1+test_acc2)/200
 
 def main():
-    pbounds = {'w': (0, 1), 'a1': (0, 1), 'b1': (0,0.5), 'a2': (0,1), 'b2': (0,0.5)}
-    optimizer = BayesianOptimization(
-        f=black_box_function,
-        pbounds=pbounds,
-        random_state=799)
-    optimizer.maximize(init_points=args.n_init, n_iter=args.n_iter)
-    
-    params=optimizer.max['params']
+    max_acc=0
     hyp_param=np.zeros(6)
-    hyp_param[0]=params['w']
-    hyp_param[1]=1-hyp_param[0]
-    hyp_param[2]=params['b1']
-    hyp_param[3]=params['a1']
-    hyp_param[4]=params['b2']
-    hyp_param[5]=params['a2']
-
+    smax=int(np.floor(np.log(args.test_epoch)/np.log(args.eta)))
+    B=(smax+1)*args.test_epoch
+    for s in range(smax+1):
+        s=smax-s
+        n=int(np.ceil((smax+1)/(s+1)*np.power(args.eta,s)))
+        r=args.test_epoch/np.power(args.eta,s)
+        T=np.random.rand(n,6)
+        T[:,1]=1-T[:,0]
+        T[:,3]=0.5*T[:,3]
+        T[:,5]=0.5*T[:,5]
+        for iii in range(s+1):
+            ni=np.floor(n/np.power(args.eta,iii))
+            ri=np.ceil(r*np.power(args.eta,iii)) # maybe floor?
+            test_runs=T.shape[0]
+            L=np.zeros(test_runs)
+            for jjj in range(test_runs):
+                L[jjj]=black_box_function(T[jjj],ri)
+            idx=np.argsort(L)
+            T=T[idx[-int(np.floor(ni/args.eta)):]].copy()
+        if L[-1]>max_acc:
+            max_acc=L[-1]
+            hyp_param=T[-1].copy()
+    
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
