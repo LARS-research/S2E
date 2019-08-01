@@ -14,7 +14,7 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
-from bayes_opt import BayesianOptimization
+from dragonfly import maximise_function
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.1)
@@ -26,8 +26,7 @@ parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=20)
-parser.add_argument('--n_init', type=int, default=10)
-parser.add_argument('--n_iter', type=int, default=0)
+parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -253,14 +252,14 @@ def evaluate(test_loader, model1, model2):
     acc2 = 100*float(correct2)/float(total2)
     return acc1, acc2
 
-def black_box_function(w,a1,b1,a2,b2):
+def black_box_function(opt_param):
     hyp_param=np.zeros(6)
-    hyp_param[0]=w
-    hyp_param[1]=1-w
-    hyp_param[2]=b1
-    hyp_param[3]=a1
-    hyp_param[4]=b2
-    hyp_param[5]=a2
+    hyp_param[0]=opt_param[0]
+    hyp_param[1]=1-opt_param[0]
+    hyp_param[2]=opt_param[1]
+    hyp_param[3]=opt_param[2]
+    hyp_param[4]=opt_param[3]
+    hyp_param[5]=opt_param[4]
 
     mean_pure_ratio1=0
     mean_pure_ratio2=0
@@ -309,21 +308,17 @@ def black_box_function(w,a1,b1,a2,b2):
     return (test_acc1+test_acc2)/200
 
 def main():
-    pbounds = {'w': (0, 1), 'a1': (0, 1), 'b1': (0,0.5), 'a2': (0,1), 'b2': (0,0.5)}
-    optimizer = BayesianOptimization(
-        f=black_box_function,
-        pbounds=pbounds,
-        random_state=799)
-    optimizer.maximize(init_points=args.n_init, n_iter=args.n_iter)
+    domain = [[0,1], [0,1], [0,0.5], [0,1], [0,0.5]]
+    max_capital = args.n_iter
+    max_val, max_pt, history = maximise_function(lambda opt_param: black_box_function(opt_param), domain, max_capital)
     
-    params=optimizer.max['params']
     hyp_param=np.zeros(6)
-    hyp_param[0]=params['w']
-    hyp_param[1]=1-hyp_param[0]
-    hyp_param[2]=params['b1']
-    hyp_param[3]=params['a1']
-    hyp_param[4]=params['b2']
-    hyp_param[5]=params['a2']
+    hyp_param[0]=max_pt[0]
+    hyp_param[1]=1-max_pt[0]
+    hyp_param[2]=max_pt[1]
+    hyp_param[3]=max_pt[2]
+    hyp_param[4]=max_pt[3]
+    hyp_param[5]=max_pt[4]
 
     mean_pure_ratio1=0
     mean_pure_ratio2=0
