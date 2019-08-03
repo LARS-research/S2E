@@ -318,7 +318,7 @@ def main():
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-        if epoch==int(args.n_epoch*split_points[0])-1 or epoch==int(args.epoch*split_points[1])-1 or epoch==int(args.epoch*split_points[2])-1 or epoch==args.n_epoch-1:
+        if epoch==int(args.n_epoch*split_points[0])-1 or epoch==int(args.n_epoch*split_points[1])-1 or epoch==int(args.n_epoch*split_points[2])-1 or epoch==args.n_epoch-1:
             if epoch==int(args.n_epoch*split_points[0])-1:
                 train_batch[0]=prev_acc
                 train_batch[1]=args.noise_rate*20
@@ -429,6 +429,7 @@ def main():
                         train_batch[iii+1][4]=0
                     else:
                         train_batch[iii+1][4]=1
+        print(train_batch)
         
 if __name__=='__main__':
     main()
