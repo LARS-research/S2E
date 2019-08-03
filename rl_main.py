@@ -14,6 +14,7 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
+from actorcritic import Actor, Critic
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.1)
@@ -330,9 +331,59 @@ def main():
                 prev_acc=(test_acc1+test_acc2)/200
                 if epoch=args.n_epoch-1:
                     train_batch[-1][-1]=1
+    
+    actor=Actor().cuda()
+    critic=Critic().cuda()
+    actorOptim = optim.Adam(actor.parameters(), lr=args.actor_lr)
+    criticOptim = optim.Adam(critic.parameters(), lr=args.critic_lr)
 
     for iii in range(args.train_epoch):
+        curStateBatch=train_batch[:][0]
+        actionBatch=train_batch[:][1]
+        nextStateBatch=train_batch[:][2]
+        rewardBatch=train_batch[:][3]
+        terminalBatch=train_batch[:][4]
+
+        curStateBatch=torch.cat(curStateBatch)
+        actionBatch=torch.cat(actionBatch)
         
+        qPredBatch=critic(curStateBatch,actionBatch)
+        qTargetBatch=getQTarget(nextStateBatch, rewardBatch, terminalBatch)
+
+        criticOptim.zero_grad(()
+        criticLoss=nn.L1Loss(qPredBatch, qTargetBatch)
+        criticLoss.backward()
+        criticOptim.step()
+
+        actorOptim.zero_grad(()
+        actorLoss=-torch.mean(critic(curStateBatch, actor(curStateBatch)))
+        actorLoss.backward()
+        actorOptim.step()
+
+        mean_pure_ratio1=0
+        mean_pure_ratio2=0
+    
+        print('building model...')
+        cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+        cnn1.cuda()
+        print(cnn1.parameters)
+        optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    
+        cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+        cnn2.cuda()
+        print(cnn2.parameters)
+        optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    
+        epoch=0
+        train_acc1=0
+        train_acc2=0
+        # evaluate models with random weights
+        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+        prev_acc = (test_acc1+test_acc2)/200
+        # save results
+        with open(txtfile, "a") as myfile:
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
         # training
         for epoch in range(1, args.n_epoch):
             # train models
