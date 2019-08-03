@@ -28,6 +28,7 @@ parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--test_epoch', type=int, default=20)
+parser.add_argument('--train_epoch', type=int, default=20)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
@@ -266,7 +267,7 @@ def getQTarget(Actor, Critic, nextStateBatch, rewardBatch, terminalBatch, discou
     return Variable(targetBatch, volatile=False)
 
 def getMaxAction(Actor, curState):
-    noise = 0
+    noise = torch.Tensor(np.random.rand()*0.1)
     action = Actor(curState)
     actionnoise = action + noise
     return actionnoise
@@ -275,7 +276,7 @@ def main():
 
     rate_schedule = np.ones(args.n_epoch)*0.5
     rate_schedule[:10] = args.noise_rate*np.arange(10)/10
-    split_points = [0.05, 0.16, 0.4]
+    split_points = [0.05, 0.16, 0.4, 1]
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -317,27 +318,29 @@ def main():
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-        if epoch==int(args.n_epoch*split_points[0]) or epoch==int(args.epoch*split_points[1]) or epoch==int(args.epoch*split_points[2]) or epoch==args.n_epoch-1:
-            if epoch==int(args.n_epoch*split_points[0]):
+        if epoch==int(args.n_epoch*split_points[0])-1 or epoch==int(args.epoch*split_points[1])-1 or epoch==int(args.epoch*split_points[2])-1 or epoch==args.n_epoch-1:
+            if epoch==int(args.n_epoch*split_points[0])-1:
                 train_batch[0]=prev_acc
                 train_batch[1]=args.noise_rate*20
                 train_batch[2]=(test_acc1+test_acc2)/200
                 prev_acc=train_batch[2]
                 train_batch[3]=train_batch[2]-train_batch[0]
                 train_batch[4]=0
-		train_batch=train_batch[:,np.newaxis]
+                train_batch=train_batch[:,np.newaxis]
             else:
                 train_batch = np.append(train_batch, np.asarray([[prev_acc, 0, (test_acc1+test_acc2)/200, (test_acc1+test_acc2)/200-prev_acc, 0]]), axis=0)
                 prev_acc=(test_acc1+test_acc2)/200
-                if epoch=args.n_epoch-1:
+                if epoch==args.n_epoch-1:
                     train_batch[-1][-1]=1
-    
+
+    print(train_batch)
     actor=Actor().cuda()
     critic=Critic().cuda()
     actorOptim = optim.Adam(actor.parameters(), lr=args.actor_lr)
     criticOptim = optim.Adam(critic.parameters(), lr=args.critic_lr)
 
-    for iii in range(args.train_epoch):
+    for jjj in range(args.train_epoch):
+        print('RL, epoch:',jjj)
         curStateBatch=train_batch[:][0]
         actionBatch=train_batch[:][1]
         nextStateBatch=train_batch[:][2]
@@ -350,18 +353,23 @@ def main():
         qPredBatch=critic(curStateBatch,actionBatch)
         qTargetBatch=getQTarget(nextStateBatch, rewardBatch, terminalBatch)
 
-        criticOptim.zero_grad(()
+        criticOptim.zero_grad()
         criticLoss=nn.L1Loss(qPredBatch, qTargetBatch)
+        print('Critic Loss: {}'.format(criticLoss))
         criticLoss.backward()
         criticOptim.step()
 
-        actorOptim.zero_grad(()
+        actor.train()
+        actorOptim.zero_grad()
         actorLoss=-torch.mean(critic(curStateBatch, actor(curStateBatch)))
+        print('Actor Loss: {}'.format(actorLoss))
         actorLoss.backward()
         actorOptim.step()
+        actor.eval()
 
         mean_pure_ratio1=0
         mean_pure_ratio2=0
+        rate_schedule = np.zeros(args.n_epoch)
     
         print('building model...')
         cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
@@ -380,7 +388,12 @@ def main():
         # evaluate models with random weights
         test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-        prev_acc = (test_acc1+test_acc2)/200
+        prev_acc=(test_acc1+test_acc2)/200
+        curState = Variable(prev_acc, volatile=True).cuda()
+        action = getMaxAction(curState)
+        curState.volatile = False
+        action.volatile = False
+        rate_schedule[:int(args.n_epoch*split_points[0])] = action.data/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
         # save results
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
@@ -400,11 +413,22 @@ def main():
             print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
             with open(txtfile, "a") as myfile:
                 myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-            if epoch==int(args.n_epoch*0.05) or epoch==int(args.epoch*0.16) or epoch==int(args.epoch*0.4):
-                
+            for iii in range(4):
+                if epoch == int(args.n_epoch*split_points[iii])-1:
+                    train_batch[iii+1][0]=prev_acc
+                    train_batch[iii+1][1]=action.data
+                    train_batch[iii+1][2]=(test_acc1+test_acc2)/200
+                    prev_acc=train_batch[iii+1][2]
+                    train_batch[iii+1][3]=train_batch[iii+1][2]-train_batch[iii+1][0]
+                    curState = Variable(prev_acc, volatile=True).cuda()
+                    action = getMaxAction(curState)
+                    curState.volatile = False
+                    action.volatile = False
+                    if iii<3:
+                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action.data/args.n_epoch*np.arange(int(args.n_epoch*i(split_points[iii+1]-split_points[iii])))
+                        train_batch[iii+1][4]=0
+                    else:
+                        train_batch[iii+1][4]=1
         
-        maxAction = getMaxAction((test_acc1+test_acc2)/200)
-        rate_schedule[:10] = 0.05*maxAction*np.arange(10)/10
-
 if __name__=='__main__':
     main()
