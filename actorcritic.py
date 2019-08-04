@@ -11,8 +11,8 @@ class Actor(nn.Module):
         self.fc2 = nn.Linear(4, 1)
 
     def forward(self, x):
-        actv = nn.LeakyReLU(self.fc1(x))
-        return nn.ReLU(self.fc2(actv))
+        actv = nn.LeakyReLU()(self.fc1(x))
+        return nn.ReLU()(self.fc2(actv))
 
 class Critic(nn.Module):
 
@@ -22,5 +22,5 @@ class Critic(nn.Module):
         self.fc2 = nn.Linear(4, 1)
 
     def forward(self, x, a):
-        actv = nn.LeakyReLU(self.fc1(torch.cat([x,a],dim=1)))
-        return nn.Tanh(self.fc2(actv))
+        actv = nn.LeakyReLU()(self.fc1(torch.cat([x,a],dim=1)))
+        return nn.Tanh()(self.fc2(actv))

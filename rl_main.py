@@ -255,23 +255,24 @@ def evaluate(test_loader, model1, model2):
     acc2 = 100*float(correct2)/float(total2)
     return acc1, acc2
 
-def getQTarget(Actor, Critic, nextStateBatch, rewardBatch, terminalBatch, discount):
+def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBatch, discount):
     targetBatch = torch.FloatTensor(rewardBatch).cuda()
-    nonFinalMask = torch.ByteTensor(tuple(map(lambda s: s == 0, terminalBatch)))
+    terminalBatch = (terminalBatch==0)
+    nonFinalMask = torch.ByteTensor(terminalBatch)
     nextStateBatch = torch.FloatTensor(nextStateBatch)
     nextStateBatch = Variable(nextStateBatch).cuda()
-    nextActionBatch = Actor(nextStateBatch)
-    nextActionBatch.volatile = True
-    qNext = Critic(nextStateBatch, nextActionBatch)
+    nextActionBatch = actoragent(nextStateBatch)
+    qNext = criticagent(nextStateBatch, nextActionBatch)
     nonFinalMask = discount * nonFinalMask.type(torch.cuda.FloatTensor)
     targetBatch += nonFinalMask * qNext.squeeze().data
     return Variable(targetBatch, volatile=False)
 
 def getMaxAction(Actor, curState):
-    noise = torch.Tensor(np.random.rand()*0.1)
+    noise = np.random.rand()*0.1
     action = Actor(curState)
     actionnoise = action + noise
-    return actionnoise
+    print(actionnoise)
+    return float(actionnoise)
 
 def main():
 
@@ -359,12 +360,12 @@ def main():
         print(curStateBatchT, actionBatchT)
         
         qPredBatch=critic(curStateBatchT,actionBatchT)
-        qTargetBatch=getQTarget(nextStateBatch, rewardBatch, terminalBatch)
+        qTargetBatch=getQTarget(actor, critic, nextStateBatch, rewardBatch, terminalBatch, 1)
         print(qPredBatch, qTargetBatch)
 
         critic.train()
         criticOptim.zero_grad()
-        criticLoss=nn.L1Loss(qPredBatch, qTargetBatch)
+        criticLoss=nn.L1Loss()(qPredBatch, qTargetBatch)
         print('Critic Loss: {}'.format(criticLoss))
         criticLoss.backward()
         criticOptim.step()
@@ -401,11 +402,11 @@ def main():
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         prev_acc=(test_acc1+test_acc2)/200
         prev_rt=1
-        curState = Variable(prev_acc, volatile=True).cuda()
-        action = getMaxAction(curState)
+        curState = Variable(torch.FloatTensor([prev_acc,prev_rt]), volatile=True).cuda()
+        action = getMaxAction(actor, curState)
         curState.volatile = False
-        action.volatile = False
-        rate_schedule[:int(args.n_epoch*split_points[0])] = action.data/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
+        print(curState,action)
+        rate_schedule[:int(args.n_epoch*split_points[0])] = action/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
         # save results
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
@@ -429,7 +430,7 @@ def main():
                 if epoch == int(args.n_epoch*split_points[iii])-1:
                     curStateBatch[iii+1][0]=prev_acc
                     curStateBatch[iii+1][1]=prev_rt
-                    actionBatch[iii+1][0]=action.data
+                    actionBatch[iii+1][0]=action
                     nextStateBatch[iii+1][0]=(test_acc1+test_acc2)/200
                     nextStateBatch[iii+1][1]=rate_schedule[epoch]
                     prev_acc=nextStateBatch[iii+1][0]
@@ -438,9 +439,8 @@ def main():
                     curState = Variable(prev_acc, volatile=True).cuda()
                     action = getMaxAction(curState)
                     curState.volatile = False
-                    action.volatile = False
                     if iii<3:
-                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action.data/args.n_epoch*np.arange(int(args.n_epoch*i(split_points[iii+1]-split_points[iii])))
+                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action/args.n_epoch*np.arange(int(args.n_epoch*i(split_points[iii+1]-split_points[iii])))
                         terminalBatch[iii+1]=0
                     else:
                         terminalBatch[iii+1]=1
