@@ -436,11 +436,12 @@ def main():
                     prev_acc=nextStateBatch[iii+1][0]
                     prev_rt=nextStateBatch[iii+1][1]
                     rewardBatch[iii+1]=nextStateBatch[iii+1][0]-curStateBatch[iii+1][0]
-                    curState = Variable(prev_acc, volatile=True).cuda()
-                    action = getMaxAction(curState)
+                    curState = Variable(torch.FloatTensor([prev_acc, prev_rt]), volatile=True).cuda()
+                    action = getMaxAction(actor, curState)
+                    print(cusState,action)
                     curState.volatile = False
                     if iii<3:
-                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action/args.n_epoch*np.arange(int(args.n_epoch*i(split_points[iii+1]-split_points[iii])))
+                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
                         terminalBatch[iii+1]=0
                     else:
                         terminalBatch[iii+1]=1
