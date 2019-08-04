@@ -258,7 +258,8 @@ def evaluate(test_loader, model1, model2):
 def getQTarget(Actor, Critic, nextStateBatch, rewardBatch, terminalBatch, discount):
     targetBatch = torch.FloatTensor(rewardBatch).cuda()
     nonFinalMask = torch.ByteTensor(tuple(map(lambda s: s == 0, terminalBatch)))
-    nextStateBatch = torch.cat(nextStateBatch)
+    nextStateBatch = torch.FloatTensor(nextStateBatch)
+    nextStateBatch = Variable(nextStateBatch).cuda()
     nextActionBatch = Actor(nextStateBatch)
     nextActionBatch.volatile = True
     qNext = Critic(nextStateBatch, nextActionBatch)
@@ -277,6 +278,7 @@ def main():
     rate_schedule = np.ones(args.n_epoch)*0.5
     rate_schedule[:10] = args.noise_rate*np.arange(10)/10
     split_points = [0.05, 0.16, 0.4, 1]
+    '''
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -298,7 +300,8 @@ def main():
     test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
     print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
     prev_acc = (test_acc1+test_acc2)/200
-    train_batch = np.zeros(5)
+    prev_rt = rate_schedule[epoch]
+    train_batch = np.zeros(5,dtype=object)
     # save results
     with open(txtfile, "a") as myfile:
         myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
@@ -320,48 +323,56 @@ def main():
             myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
         if epoch==int(args.n_epoch*split_points[0])-1 or epoch==int(args.n_epoch*split_points[1])-1 or epoch==int(args.n_epoch*split_points[2])-1 or epoch==args.n_epoch-1:
             if epoch==int(args.n_epoch*split_points[0])-1:
-                train_batch[0]=prev_acc
+                train_batch[0]=np.asarray([prev_acc,prev_rt])
                 train_batch[1]=args.noise_rate*20
-                train_batch[2]=(test_acc1+test_acc2)/200
-                prev_acc=train_batch[2]
-                train_batch[3]=train_batch[2]-train_batch[0]
+                train_batch[2]=np.asarray([(test_acc1+test_acc2)/200,rate_schedule[epoch]])
+                prev_acc=train_batch[2][0]
+                prev_rt=train_batch[2][1]
+                train_batch[3]=train_batch[2][0]-train_batch[0][0]
                 train_batch[4]=0
-                train_batch=train_batch[:,np.newaxis]
+                train_batch=train_batch[np.newaxis, :]
             else:
-                train_batch = np.append(train_batch, np.asarray([[prev_acc, 0, (test_acc1+test_acc2)/200, (test_acc1+test_acc2)/200-prev_acc, 0]]), axis=0)
+                train_batch = np.append(train_batch, np.asarray([[ [prev_acc,prev_rt], 0, [(test_acc1+test_acc2)/200,rate_schedule[epoch]], (test_acc1+test_acc2)/200-prev_acc, 0]]), axis=0)
                 prev_acc=(test_acc1+test_acc2)/200
+                prev_rt=rate_schedule[epoch]
                 if epoch==args.n_epoch-1:
                     train_batch[-1][-1]=1
-
-    print(train_batch)
+    '''
+    curStateBatch = np.asarray([[0.9995994,1],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
+    actionBatch = np.asarray([[10,0,0,0]]).T
+    nextStateBatch = np.asarray([[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5],[0.71804888,0.5]])
+    rewardBatch = np.asarray([0.6088742,0.01973151,-0.04967949,0.03916266])
+    terminalBatch = np.asarray([0,0,0,1])
     actor=Actor().cuda()
     critic=Critic().cuda()
-    actorOptim = optim.Adam(actor.parameters(), lr=args.actor_lr)
-    criticOptim = optim.Adam(critic.parameters(), lr=args.critic_lr)
+    actorOptim = torch.optim.Adam(actor.parameters(), lr=args.actor_lr)
+    criticOptim = torch.optim.Adam(critic.parameters(), lr=args.critic_lr)
 
     for jjj in range(args.train_epoch):
         print('RL, epoch:',jjj)
-        curStateBatch=train_batch[:][0]
-        actionBatch=train_batch[:][1]
-        nextStateBatch=train_batch[:][2]
-        rewardBatch=train_batch[:][3]
-        terminalBatch=train_batch[:][4]
+        print(curStateBatch, actionBatch, nextStateBatch, rewardBatch, terminalBatch)
 
-        curStateBatch=torch.cat(curStateBatch)
-        actionBatch=torch.cat(actionBatch)
+        curStateBatchT=torch.FloatTensor(curStateBatch)
+        curStateBatchT=Variable(curStateBatchT).cuda()
+        actionBatchT=torch.FloatTensor(actionBatch)
+        actionBatchT=Variable(actionBatchT).cuda()
+        print(curStateBatchT, actionBatchT)
         
-        qPredBatch=critic(curStateBatch,actionBatch)
+        qPredBatch=critic(curStateBatchT,actionBatchT)
         qTargetBatch=getQTarget(nextStateBatch, rewardBatch, terminalBatch)
+        print(qPredBatch, qTargetBatch)
 
+        critic.train()
         criticOptim.zero_grad()
         criticLoss=nn.L1Loss(qPredBatch, qTargetBatch)
         print('Critic Loss: {}'.format(criticLoss))
         criticLoss.backward()
         criticOptim.step()
+        critic.eval()
 
         actor.train()
         actorOptim.zero_grad()
-        actorLoss=-torch.mean(critic(curStateBatch, actor(curStateBatch)))
+        actorLoss=-torch.mean(critic(curStateBatchT, actor(curStateBatchT)))
         print('Actor Loss: {}'.format(actorLoss))
         actorLoss.backward()
         actorOptim.step()
@@ -389,6 +400,7 @@ def main():
         test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         prev_acc=(test_acc1+test_acc2)/200
+        prev_rt=1
         curState = Variable(prev_acc, volatile=True).cuda()
         action = getMaxAction(curState)
         curState.volatile = False
@@ -415,21 +427,24 @@ def main():
                 myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
             for iii in range(4):
                 if epoch == int(args.n_epoch*split_points[iii])-1:
-                    train_batch[iii+1][0]=prev_acc
-                    train_batch[iii+1][1]=action.data
-                    train_batch[iii+1][2]=(test_acc1+test_acc2)/200
-                    prev_acc=train_batch[iii+1][2]
-                    train_batch[iii+1][3]=train_batch[iii+1][2]-train_batch[iii+1][0]
+                    curStateBatch[iii+1][0]=prev_acc
+                    curStateBatch[iii+1][1]=prev_rt
+                    actionBatch[iii+1][0]=action.data
+                    nextStateBatch[iii+1][0]=(test_acc1+test_acc2)/200
+                    nextStateBatch[iii+1][1]=rate_schedule[epoch]
+                    prev_acc=nextStateBatch[iii+1][0]
+                    prev_rt=nextStateBatch[iii+1][1]
+                    rewardBatch[iii+1]=nextStateBatch[iii+1][0]-curStateBatch[iii+1][0]
                     curState = Variable(prev_acc, volatile=True).cuda()
                     action = getMaxAction(curState)
                     curState.volatile = False
                     action.volatile = False
                     if iii<3:
                         rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action.data/args.n_epoch*np.arange(int(args.n_epoch*i(split_points[iii+1]-split_points[iii])))
-                        train_batch[iii+1][4]=0
+                        terminalBatch[iii+1]=0
                     else:
-                        train_batch[iii+1][4]=1
-        print(train_batch)
+                        terminalBatch[iii+1]=1
+        print(curStateBatch, actionBatch, nextStateBatch, rewardBatch, terminalBatch)
         
 if __name__=='__main__':
     main()

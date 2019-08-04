@@ -7,7 +7,7 @@ class Actor(nn.Module):
 
     def __init__(self):
         super(Actor, self).__init__()
-        self.fc1 = nn.Linear(1, 4)
+        self.fc1 = nn.Linear(2, 4)
         self.fc2 = nn.Linear(4, 1)
 
     def forward(self, x):
@@ -18,7 +18,7 @@ class Critic(nn.Module):
 
     def __init__(self):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(2, 4)
+        self.fc1 = nn.Linear(3, 4)
         self.fc2 = nn.Linear(4, 1)
 
     def forward(self, x, a):
