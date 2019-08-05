@@ -18,7 +18,7 @@ from actorcritic import Actor, Critic
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.1)
-parser.add_argument('--actor_lr', type = float, default = 0.01)
+parser.add_argument('--actor_lr', type = float, default = 1)
 parser.add_argument('--critic_lr', type = float, default = 0.1)
 parser.add_argument('--result_dir', type = str, help = 'dir to save result txt files', default = 'results/')
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
@@ -27,9 +27,7 @@ parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', de
 parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
-parser.add_argument('--test_epoch', type=int, default=20)
 parser.add_argument('--train_epoch', type=int, default=20)
-parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -144,7 +142,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str=args.dataset+'_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
+model_str=args.dataset+'_rl_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
