@@ -337,7 +337,7 @@ def main():
                 if epoch==args.n_epoch-1:
                     train_batch[-1][-1]=1
     '''
-    curStateBatch = np.asarray([[0.9995994,1],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
+    curStateBatch = np.asarray([[0.09995994,1],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
     actionBatch = np.asarray([[10,0,0,0]]).T
     nextStateBatch = np.asarray([[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5],[0.71804888,0.5]])
     rewardBatch = np.asarray([0.6088742,0.01973151,-0.04967949,0.03916266])
