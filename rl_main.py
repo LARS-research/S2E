@@ -428,23 +428,23 @@ def main():
                 myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
             for iii in range(4):
                 if epoch == int(args.n_epoch*split_points[iii])-1:
-                    curStateBatch[iii+1][0]=prev_acc
-                    curStateBatch[iii+1][1]=prev_rt
-                    actionBatch[iii+1][0]=action
-                    nextStateBatch[iii+1][0]=(test_acc1+test_acc2)/200
-                    nextStateBatch[iii+1][1]=rate_schedule[epoch]
-                    prev_acc=nextStateBatch[iii+1][0]
-                    prev_rt=nextStateBatch[iii+1][1]
-                    rewardBatch[iii+1]=nextStateBatch[iii+1][0]-curStateBatch[iii+1][0]
+                    curStateBatch[iii][0]=prev_acc
+                    curStateBatch[iii][1]=prev_rt
+                    actionBatch[iii][0]=action
+                    nextStateBatch[iii][0]=(test_acc1+test_acc2)/200
+                    nextStateBatch[iii][1]=rate_schedule[epoch]
+                    prev_acc=nextStateBatch[iii][0]
+                    prev_rt=nextStateBatch[iii][1]
+                    rewardBatch[iii]=nextStateBatch[iii][0]-curStateBatch[iii][0]
                     curState = Variable(torch.FloatTensor([prev_acc, prev_rt]), volatile=True).cuda()
                     action = getMaxAction(actor, curState)
-                    print(cusState,action)
+                    print(curState,action)
                     curState.volatile = False
                     if iii<3:
                         rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
-                        terminalBatch[iii+1]=0
+                        terminalBatch[iii]=0
                     else:
-                        terminalBatch[iii+1]=1
+                        terminalBatch[iii]=1
         print(curStateBatch, actionBatch, nextStateBatch, rewardBatch, terminalBatch)
         
 if __name__=='__main__':
