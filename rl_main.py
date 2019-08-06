@@ -269,7 +269,7 @@ def getMaxAction(Actor, curState):
     noise = np.random.rand()*0.1
     action = Actor(curState)
     actionnoise = action + noise
-    print(actionnoise)
+    # print(actionnoise)
     return float(actionnoise)
 
 def main():
@@ -404,7 +404,7 @@ def main():
         action = getMaxAction(actor, curState)
         curState.volatile = False
         print(curState,action)
-        rate_schedule[:int(args.n_epoch*split_points[0])] = action/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
+        rate_schedule[:int(args.n_epoch*split_points[0])] = np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
         # save results
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
@@ -439,7 +439,7 @@ def main():
                     print(curState,action)
                     curState.volatile = False
                     if iii<3:
-                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+action/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
+                        rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
                         terminalBatch[iii]=0
                     else:
                         terminalBatch[iii]=1

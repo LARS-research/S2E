@@ -12,14 +12,14 @@ class Actor(nn.Module):
 
     def forward(self, x):
         actv = nn.LeakyReLU()(self.fc1(x))
-        return nn.ReLU()(self.fc2(actv))
+        return nn.Sigmoid()(self.fc2(actv))
 
 class Critic(nn.Module):
 
     def __init__(self):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(3, 4)
-        self.fc2 = nn.Linear(4, 1)
+        self.fc1 = nn.Linear(3, 8)
+        self.fc2 = nn.Linear(8, 1)
 
     def forward(self, x, a):
         actv = nn.LeakyReLU()(self.fc1(torch.cat([x,a],dim=1)))
