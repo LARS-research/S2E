@@ -18,7 +18,7 @@ from actorcritic import Actor, Critic
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.1)
-parser.add_argument('--actor_lr', type = float, default = 1)
+parser.add_argument('--actor_lr', type = float, default = 0.1)
 parser.add_argument('--critic_lr', type = float, default = 0.1)
 parser.add_argument('--result_dir', type = str, help = 'dir to save result txt files', default = 'results/')
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
@@ -405,7 +405,7 @@ def main():
         curState = Variable(torch.FloatTensor([prev_acc,prev_rt]), volatile=True).cuda()
         action = getMaxAction(actor, curState)
         curState.volatile = False
-        print(curState,action)
+        print(curState,action,np.tan(action*np.pi/2))
         rate_schedule[:int(args.n_epoch*split_points[0])] = np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
         # save results
         with open(txtfile, "a") as myfile:
@@ -438,7 +438,7 @@ def main():
                     rewardBatch[iii]=nextStateBatch[iii][0]-curStateBatch[iii][0]
                     curState = Variable(torch.FloatTensor([prev_acc, prev_rt]), volatile=True).cuda()
                     action = getMaxAction(actor, curState)
-                    print(curState,action)
+                    print(curState,action,np.tan(action*np.pi/2))
                     curState.volatile = False
                     if iii<3:
                         rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
