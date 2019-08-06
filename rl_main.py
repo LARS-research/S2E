@@ -267,7 +267,7 @@ def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBat
     return Variable(targetBatch, volatile=False)
 
 def getMaxAction(Actor, curState):
-    noise = np.random.rand()*0.1
+    noise = np.random.rand()*0.01
     action = Actor(curState)
     actionnoise = action + noise
     # print(actionnoise)
