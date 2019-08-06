@@ -255,7 +255,7 @@ def evaluate(test_loader, model1, model2):
 
 def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBatch, discount):
     targetBatch = torch.FloatTensor(rewardBatch).cuda()
-    terminalBatch = (terminalBatch==0)
+    terminalBatch = np.asarray(terminalBatch==0,dtype=np.uint8)
     nonFinalMask = torch.ByteTensor(terminalBatch)
     nextStateBatch = torch.FloatTensor(nextStateBatch)
     nextStateBatch = Variable(nextStateBatch).cuda()
@@ -263,13 +263,14 @@ def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBat
     qNext = criticagent(nextStateBatch, nextActionBatch)
     nonFinalMask = discount * nonFinalMask.type(torch.cuda.FloatTensor)
     targetBatch += nonFinalMask * qNext.squeeze().data
+    targetBatch = torch.reshape(targetBatch,(4,1))
     return Variable(targetBatch, volatile=False)
 
 def getMaxAction(Actor, curState):
     noise = np.random.rand()*0.1
     action = Actor(curState)
     actionnoise = action + noise
-    print(actionnoise)
+    # print(actionnoise)
     return float(actionnoise)
 
 def main():
@@ -337,7 +338,7 @@ def main():
                 if epoch==args.n_epoch-1:
                     train_batch[-1][-1]=1
     '''
-    curStateBatch = np.asarray([[0.9995994,1],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
+    curStateBatch = np.asarray([[0.09995994,1],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
     actionBatch = np.asarray([[10,0,0,0]]).T
     nextStateBatch = np.asarray([[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5],[0.71804888,0.5]])
     rewardBatch = np.asarray([0.6088742,0.01973151,-0.04967949,0.03916266])
@@ -358,8 +359,9 @@ def main():
         print(curStateBatchT, actionBatchT)
         
         qPredBatch=critic(curStateBatchT,actionBatchT)
-        qTargetBatch=getQTarget(actor, critic, nextStateBatch, rewardBatch, terminalBatch, 1)
-        print(qPredBatch, qTargetBatch)
+        qTargetBatch=getQTarget(actor, critic, nextStateBatch, rewardBatch, terminalBatch, 0.5)
+        print('Predict reward: {}'.format(qPredBatch))
+        print('Actual reward: {}'.format(qTargetBatch))
 
         critic.train()
         criticOptim.zero_grad()
