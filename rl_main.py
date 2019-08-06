@@ -255,7 +255,7 @@ def evaluate(test_loader, model1, model2):
 
 def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBatch, discount):
     targetBatch = torch.FloatTensor(rewardBatch).cuda()
-    terminalBatch = (terminalBatch==0)
+    terminalBatch = np.asarray(terminalBatch==0,dtype=np.uint8)
     nonFinalMask = torch.ByteTensor(terminalBatch)
     nextStateBatch = torch.FloatTensor(nextStateBatch)
     nextStateBatch = Variable(nextStateBatch).cuda()
@@ -263,6 +263,7 @@ def getQTarget(actoragent, criticagent, nextStateBatch, rewardBatch, terminalBat
     qNext = criticagent(nextStateBatch, nextActionBatch)
     nonFinalMask = discount * nonFinalMask.type(torch.cuda.FloatTensor)
     targetBatch += nonFinalMask * qNext.squeeze().data
+    targetBatch = torch.reshape(targetBatch,(4,1))
     return Variable(targetBatch, volatile=False)
 
 def getMaxAction(Actor, curState):
@@ -358,8 +359,9 @@ def main():
         print(curStateBatchT, actionBatchT)
         
         qPredBatch=critic(curStateBatchT,actionBatchT)
-        qTargetBatch=getQTarget(actor, critic, nextStateBatch, rewardBatch, terminalBatch, 1)
-        print(qPredBatch, qTargetBatch)
+        qTargetBatch=getQTarget(actor, critic, nextStateBatch, rewardBatch, terminalBatch, 0.5)
+        print('Predict reward: {}'.format(qPredBatch))
+        print('Actual reward: {}'.format(qTargetBatch))
 
         critic.train()
         criticOptim.zero_grad()
