@@ -8,10 +8,9 @@ import torchvision.transforms as transforms
 from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
 from model import CNN
-import argparse, sys
+import argparse
 import numpy as np
 import datetime
-import shutil
 
 from loss import loss_coteaching
 from actorcritic import Actor, Critic
@@ -365,7 +364,7 @@ def main():
 
         critic.train()
         criticOptim.zero_grad()
-        criticLoss=nn.L1Loss()(qPredBatch, qTargetBatch)
+        criticLoss=nn.MSELoss()(qPredBatch, qTargetBatch)
         print('Critic Loss: {}'.format(criticLoss))
         criticLoss.backward()
         criticOptim.step()
@@ -373,7 +372,7 @@ def main():
 
         actor.train()
         actorOptim.zero_grad()
-        actorLoss=-torch.mean(critic(curStateBatchT, actor(curStateBatchT)))
+        actorLoss=-torch.sum(critic(curStateBatchT, actor(curStateBatchT)))
         print('Actor Loss: {}'.format(actorLoss))
         actorLoss.backward()
         actorOptim.step()
@@ -405,7 +404,8 @@ def main():
         curState = Variable(torch.FloatTensor([prev_acc,prev_rt]), volatile=True).cuda()
         action = getMaxAction(actor, curState)
         curState.volatile = False
-        print(curState,action,np.tan(action*np.pi/2))
+        print('Current state: {}'.format(curState))
+        print('Action:',action,np.tan(action*np.pi/2))
         rate_schedule[:int(args.n_epoch*split_points[0])] = np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*split_points[0]))
         # save results
         with open(txtfile, "a") as myfile:
@@ -438,7 +438,8 @@ def main():
                     rewardBatch[iii]=nextStateBatch[iii][0]-curStateBatch[iii][0]
                     curState = Variable(torch.FloatTensor([prev_acc, prev_rt]), volatile=True).cuda()
                     action = getMaxAction(actor, curState)
-                    print(curState,action,np.tan(action*np.pi/2))
+                    print('Current state: {}'.format(curState))
+                    print('Action:',action,np.tan(action*np.pi/2))
                     curState.volatile = False
                     if iii<3:
                         rate_schedule[int(args.n_epoch*split_points[iii]):int(args.n_epoch*split_points[iii+1])] = rate_schedule[epoch]+np.tan(action*np.pi/2)/args.n_epoch*np.arange(int(args.n_epoch*(split_points[iii+1]-split_points[iii])))
