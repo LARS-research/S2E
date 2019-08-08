@@ -364,7 +364,7 @@ def main():
 
         critic.train()
         criticOptim.zero_grad()
-        criticLoss=nn.MSELoss()(qPredBatch, qTargetBatch)
+        criticLoss=nn.L1Loss()(qPredBatch, qTargetBatch)
         print('Critic Loss: {}'.format(criticLoss))
         criticLoss.backward()
         criticOptim.step()
@@ -372,7 +372,7 @@ def main():
 
         actor.train()
         actorOptim.zero_grad()
-        actorLoss=-torch.sum(critic(curStateBatchT, actor(curStateBatchT)))
+        actorLoss=torch.mean(critic(curStateBatchT, actor(curStateBatchT)))
         print('Actor Loss: {}'.format(actorLoss))
         actorLoss.backward()
         actorOptim.step()
