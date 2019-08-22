@@ -5,16 +5,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
 from model import MLP
 import argparse, sys
 import numpy as np
 import datetime
-import shutil
 
 from loss import loss_coteaching
 from scipy.special import psi
+from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.001)
@@ -264,7 +263,6 @@ def main():
     
     np.random.seed(args.seed)
     cur_acc=0
-    max_acc=0
     cur_param=np.random.rand(5)
     max_pt=np.random.rand(5)
     hyphyp=np.ones(10)

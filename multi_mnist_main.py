@@ -5,13 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as transforms
-from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
 from model import MLP
 import argparse, sys
 import numpy as np
 import datetime
-import shutil
 
 from loss import loss_coteaching_cpu
 
@@ -217,11 +215,11 @@ def black_box_function(opt_param):
     print('building model...')
     cnn1 = MLP(n_outputs=num_classes)
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
     cnn2 = MLP(n_outputs=num_classes)
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)
@@ -256,13 +254,12 @@ def black_box_function(opt_param):
     return (test_acc1+test_acc2)/200
 
 def main():
-    '''
+    
     np.random.seed(args.seed)
     max_acc=0
     cur_param=np.random.rand(5)
     max_pt=np.random.rand(5)
     for iii in range(args.n_iter):
-        cur_acc
         for jjj in range(args.n_samples):
             for kkk in range(5):
                 cur_param[kkk]=np.random.beta(1,1)
@@ -277,13 +274,13 @@ def main():
     hyp_param[0]=max_pt[0]
     hyp_param[1]=1-max_pt[0]
     hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
+    hyp_param[3]=max_pt[2]*0.5
     hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
+    hyp_param[5]=max_pt[4]*0.5
 
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    '''
+    print('Final Schedule:',rate_schedule,hyp_param)
+    
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -295,13 +292,13 @@ def main():
     cnn2 = MLP(n_outputs=num_classes)
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
-    
+    '''
     rate_schedule=np.ones(args.n_epoch)*forget_rate
     rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
     rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
     # rate_schedule=np.zeros(args.n_epoch)
     print(rate_schedule)
-    
+    '''
     epoch=0
     train_acc1=0
     train_acc2=0
