@@ -8,6 +8,18 @@ import torch.optim as optim
 def call_bn(bn, x):
     return bn(x)
 
+class MLP(nn.Module):
+    def __init__(self,n_outputs=10):
+        super(MLP, self).__init__()
+        self.l1=nn.Linear(784,256)
+        self.l2=nn.Linear(256,n_outputs)
+
+    def forward(self, x):
+        x=x.view(-1,28*28)
+        x=F.relu(self.l1(x))
+        x=self.l2(x)
+        return x
+
 class CNN(nn.Module):
     def __init__(self, input_channel=3, n_outputs=10, dropout_rate=0.25, top_bn=False):
         self.dropout_rate = dropout_rate

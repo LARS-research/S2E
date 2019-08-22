@@ -24,8 +24,8 @@ parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', de
 parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
-parser.add_argument('--test_epoch', type=int, default=20)
 parser.add_argument('--n_iter', type=int, default=1)
+parser.add_argument('--n_samples', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -47,7 +47,7 @@ if args.dataset=='mnist':
     input_channel=1
     num_classes=10
     args.top_bn = False
-    args.epoch_decay_start = 80
+    args.epoch_decay_start = 200
     args.n_epoch = 200
     train_dataset = MNIST(root='./data/',
                                 download=True,  
@@ -140,7 +140,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str=args.dataset+'_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
+model_str=args.dataset+'_rand_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -288,7 +288,7 @@ def black_box_function(opt_param):
         myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     # training
-    for epoch in range(1, args.test_epoch):
+    for epoch in range(1, args.n_epoch):
         # train models
         cnn1.train()
         adjust_learning_rate(optimizer1, epoch)
@@ -307,18 +307,21 @@ def black_box_function(opt_param):
     return (test_acc1+test_acc2)/200
 
 def main():
+    np.random.seed(args.seed)
     cur_acc=0
     max_acc=0
     cur_param=np.random.rand(5)
     max_pt=np.random.rand(5)
     for iii in range(args.n_iter):
-        cur_param=np.random.rand(5)
-        cur_param[2]*=0.5
-        cur_param[4]*=0.5
-        cur_acc=black_box_function(cur_param)
-        if max_acc<cur_acc:
-            max_acc=cur_acc
-            max_pt=cur_param.copy()
+        for jjj in range(args.n_samples):
+            for kkk in range(5):
+                cur_param[kkk]=np.random.beta(1,1)
+            cur_param[2]*=0.5
+            cur_param[4]*=0.5
+            cur_acc=black_box_function(cur_param)
+            if max_acc<cur_acc:
+                max_acc=cur_acc
+                max_pt=cur_param.copy()
     
     hyp_param=np.zeros(6)
     hyp_param[0]=max_pt[0]

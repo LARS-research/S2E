@@ -274,10 +274,15 @@ def getMaxAction(Actor, curState):
 
 def main():
 
-    rate_schedule = np.ones(args.n_epoch)*0.5
+    rate_schedule = np.ones(args.n_epoch)*args.noise_rate
     rate_schedule[:10] = args.noise_rate*np.arange(10)/10
     split_points = [0.05, 0.16, 0.4, 1]
-    '''
+    curStateBatch = np.asarray([[0.09995994,0],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
+    actionBatch = np.asarray([[np.arctan(10)/np.pi*2,0,0,0]]).T
+    nextStateBatch = np.asarray([[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5],[0.71804888,0.5]])
+    rewardBatch = np.asarray([0.6088742,0.01973151,-0.04967949,0.03916266])
+    terminalBatch = np.asarray([0,0,0,1])
+    
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -300,7 +305,6 @@ def main():
     print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
     prev_acc = (test_acc1+test_acc2)/200
     prev_rt = rate_schedule[epoch]
-    train_batch = np.zeros(5,dtype=object)
     # save results
     with open(txtfile, "a") as myfile:
         myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
@@ -320,28 +324,29 @@ def main():
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-        if epoch==int(args.n_epoch*split_points[0])-1 or epoch==int(args.n_epoch*split_points[1])-1 or epoch==int(args.n_epoch*split_points[2])-1 or epoch==args.n_epoch-1:
-            if epoch==int(args.n_epoch*split_points[0])-1:
-                train_batch[0]=np.asarray([prev_acc,prev_rt])
-                train_batch[1]=args.noise_rate*20
-                train_batch[2]=np.asarray([(test_acc1+test_acc2)/200,rate_schedule[epoch]])
-                prev_acc=train_batch[2][0]
-                prev_rt=train_batch[2][1]
-                train_batch[3]=train_batch[2][0]-train_batch[0][0]
-                train_batch[4]=0
-                train_batch=train_batch[np.newaxis, :]
-            else:
-                train_batch = np.append(train_batch, np.asarray([[ [prev_acc,prev_rt], 0, [(test_acc1+test_acc2)/200,rate_schedule[epoch]], (test_acc1+test_acc2)/200-prev_acc, 0]]), axis=0)
-                prev_acc=(test_acc1+test_acc2)/200
-                prev_rt=rate_schedule[epoch]
-                if epoch==args.n_epoch-1:
-                    train_batch[-1][-1]=1
+        for iii in range(4):
+            if epoch == int(args.n_epoch*split_points[iii])-1:
+                curStateBatch[iii][0]=prev_acc
+                curStateBatch[iii][1]=prev_rt
+                actionBatch[iii][0]=0
+                nextStateBatch[iii][0]=(test_acc1+test_acc2)/200
+                nextStateBatch[iii][1]=rate_schedule[epoch]
+                prev_acc=nextStateBatch[iii][0]
+                prev_rt=nextStateBatch[iii][1]
+                rewardBatch[iii]=nextStateBatch[iii][0]-curStateBatch[iii][0]
+                if iii<3:
+                    if iii==0:
+                        actionBatch[iii][0]=args.noise_rate/0.05
+                    terminalBatch[iii]=0
+                else:
+                    terminalBatch[iii]=1
     '''
     curStateBatch = np.asarray([[0.09995994,0],[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5]])
     actionBatch = np.asarray([[np.arctan(10)/np.pi*2,0,0,0]]).T
     nextStateBatch = np.asarray([[0.70883413,0.5],[0.72856571,0.5],[0.67888622,0.5],[0.71804888,0.5]])
     rewardBatch = np.asarray([0.6088742,0.01973151,-0.04967949,0.03916266])
     terminalBatch = np.asarray([0,0,0,1])
+    '''
     actor=Actor().cuda()
     critic=Critic().cuda()
     actorOptim = torch.optim.Adam(actor.parameters(), lr=args.actor_lr)
