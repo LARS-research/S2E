@@ -16,7 +16,7 @@ import shutil
 from loss import loss_coteaching
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', type = float, default = 0.1)
+parser.add_argument('--lr', type = float, default = 0.001)
 parser.add_argument('--result_dir', type = str, help = 'dir to save result txt files', default = 'results/')
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
@@ -69,8 +69,8 @@ if args.dataset=='cifar10':
     input_channel=3
     num_classes=10
     args.top_bn = False
-    # args.epoch_decay_start = 80
-    args.epoch_decay_start = 200
+    args.epoch_decay_start = 80
+    # args.epoch_decay_start = 200
     args.n_epoch = 200
     train_dataset = CIFAR10(root='./data/',
                                 download=True,  
@@ -119,15 +119,15 @@ noise_or_not = train_dataset.noise_or_not
 
 # Adjust learning rate and betas for Adam Optimizer
 mom1 = 0.9
-# mom2 = 0.1
+mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
-alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
-alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
-alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
+# alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
+# alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
+# alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
 beta1_plan = [mom1] * args.n_epoch
-# for i in range(args.epoch_decay_start, args.n_epoch):
-    # alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
-    # beta1_plan[i] = mom2
+for i in range(args.epoch_decay_start, args.n_epoch):
+    alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
+    beta1_plan[i] = mom2
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
@@ -264,15 +264,15 @@ def black_box_function(opt_param):
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)
@@ -302,11 +302,12 @@ def black_box_function(opt_param):
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     return (test_acc1+test_acc2)/200
 
 def main():
+    '''
     np.random.seed(args.seed)
     cur_acc=0
     max_acc=0
@@ -330,25 +331,31 @@ def main():
     hyp_param[3]=max_pt[2]
     hyp_param[4]=max_pt[3]
     hyp_param[5]=max_pt[4]
+    
+    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
+    print('Schedule:',rate_schedule,hyp_param)
+    '''
+    rate_schedule=np.ones(args.n_epoch)*forget_rate
+    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
+    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
+    # rate_schedule=np.zeros(args.n_epoch)
+    print(rate_schedule)
 
+    epoch=0
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
-    
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    
-    epoch=0
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
+
     train_acc1=0
     train_acc2=0
     # evaluate models with random weights
@@ -373,7 +380,7 @@ def main():
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
 if __name__=='__main__':
     main()

@@ -267,12 +267,12 @@ def black_box_function(opt_param):
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
@@ -305,7 +305,7 @@ def black_box_function(opt_param):
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     return (test_acc1+test_acc2)/200
 
@@ -354,12 +354,12 @@ def main():
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
@@ -392,7 +392,7 @@ def main():
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
 if __name__=='__main__':
     main()
