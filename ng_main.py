@@ -122,15 +122,15 @@ noise_or_not = train_dataset.noise_or_not
 
 # Adjust learning rate and betas for Adam Optimizer
 mom1 = 0.9
-# mom2 = 0.1
+mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
-alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
-alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
-alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
+# alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
+# alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
+# alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
 beta1_plan = [mom1] * args.n_epoch
-# for i in range(args.epoch_decay_start, args.n_epoch):
-    # alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
-    # beta1_plan[i] = mom2
+for i in range(args.epoch_decay_start, args.n_epoch):
+    alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
+    beta1_plan[i] = mom2
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
@@ -270,12 +270,12 @@ def black_box_function(opt_param):
     cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
     cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)
@@ -357,12 +357,12 @@ def main():
     cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
     cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)

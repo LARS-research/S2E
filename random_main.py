@@ -307,7 +307,7 @@ def black_box_function(opt_param):
     return (test_acc1+test_acc2)/200
 
 def main():
-    '''
+    
     np.random.seed(args.seed)
     cur_acc=0
     max_acc=0
@@ -340,7 +340,7 @@ def main():
     rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
     # rate_schedule=np.zeros(args.n_epoch)
     print(rate_schedule)
-
+    '''
     epoch=0
     mean_pure_ratio1=0
     mean_pure_ratio2=0
