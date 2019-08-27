@@ -14,6 +14,8 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
+from scipy.special import psi
+from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.001)
@@ -23,6 +25,7 @@ parser.add_argument('--forget_rate', type = float, help = 'forget rate', default
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
 parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
+parser.add_argument('--delta', type=float, default=1000)
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--n_samples', type=int, default=1)
@@ -313,24 +316,40 @@ def main():
     max_acc=0
     cur_param=np.random.rand(5)
     max_pt=np.random.rand(5)
+    hyphyp=np.ones(10)
+    loggrad=np.zeros((10,1))
+    hypgrad=np.zeros((10,1))
+    fisher=np.zeros((10,10))
     for iii in range(args.n_iter):
+        print('Distribution:',hyphyp)
         for jjj in range(args.n_samples):
             for kkk in range(5):
-                cur_param[kkk]=np.random.beta(1,1)
+                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
+                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
+            fisher=fisher+loggrad*loggrad.T
             cur_param[2]*=0.5
             cur_param[4]*=0.5
             cur_acc=black_box_function(cur_param)
-            if max_acc<cur_acc:
-                max_acc=cur_acc
-                max_pt=cur_param.copy()
+            hypgrad=hypgrad+cur_acc*loggrad
+
+        hypgrad=hypgrad/args.n_samples
+        fisher=fisher/args.n_samples
+        fisher=inv(fisher)
+        hypgrad=args.delta*np.dot(fisher,hypgrad)/(np.dot(hypgrad.T,np.dot(fisher,hypgrad)))
+        hyphyp=hyphyp+hypgrad[:,0]
+        hyphyp=np.maximum(hyphyp,1)
     
+    for kkk in range(5):
+        max_pt[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+
     hyp_param=np.zeros(6)
     hyp_param[0]=max_pt[0]
     hyp_param[1]=1-max_pt[0]
     hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
+    hyp_param[3]=max_pt[2]*0.5
     hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
+    hyp_param[5]=max_pt[4]*0.5
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)

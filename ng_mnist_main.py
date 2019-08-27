@@ -296,9 +296,9 @@ def main():
     hyp_param[0]=max_pt[0]
     hyp_param[1]=1-max_pt[0]
     hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
+    hyp_param[3]=max_pt[2]*0.5
     hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
+    hyp_param[5]=max_pt[4]*0.5
 
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)

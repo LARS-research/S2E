@@ -346,9 +346,9 @@ def main():
     hyp_param[0]=max_pt[0]
     hyp_param[1]=1-max_pt[0]
     hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
+    hyp_param[3]=max_pt[2]*0.5
     hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
+    hyp_param[5]=max_pt[4]*0.5
 
     mean_pure_ratio1=0
     mean_pure_ratio2=0
