@@ -18,7 +18,7 @@ from scipy.special import psi
 from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', type = float, default = 0.1)
+parser.add_argument('--lr', type = float, default = 0.001)
 parser.add_argument('--result_dir', type = str, help = 'dir to save result txt files', default = 'results/')
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
