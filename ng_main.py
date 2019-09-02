@@ -27,6 +27,7 @@ parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--n_iter', type=int, default=5)
 parser.add_argument('--n_samples', type=int, default=10)
+parser.add_argument('--fisher_samples', type=int, default=10)
 parser.add_argument('--delta', type=float, default=1000)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
@@ -286,8 +287,15 @@ def main():
             cur_acc=black_box_function(cur_param)
             hypgrad=hypgrad+cur_acc*loggrad
 
+        for jjj in range(args.fisher_samples):
+            for kkk in range(5):
+                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
+                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
+            fisher=fisher+loggrad*loggrad.T
+
         hypgrad=hypgrad/args.n_samples
-        fisher=fisher/args.n_samples
+        fisher=fisher/(args.n_samples+args.fisher_samples)
         fisher=inv(fisher)
         hypgrad=args.delta*np.dot(fisher,hypgrad)/(np.dot(hypgrad.T,np.dot(fisher,hypgrad)))
         hyphyp=hyphyp+hypgrad[:,0]
