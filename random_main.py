@@ -22,7 +22,6 @@ parser.add_argument('--noise_rate', type = float, help = 'corruption rate, shoul
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
 parser.add_argument('--top_bn', action='store_true')
-parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--n_samples', type=int, default=1)
@@ -43,72 +42,27 @@ batch_size = 128
 learning_rate = args.lr 
 
 # load dataset
-if args.dataset=='mnist':
-    input_channel=1
-    num_classes=10
-    args.top_bn = False
-    args.epoch_decay_start = 200
-    args.n_epoch = 200
-    train_dataset = MNIST(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                         )
-    
-    test_dataset = MNIST(root='./data/',
-                               download=True,  
-                               train=False, 
-                               transform=transforms.ToTensor(),
-                               noise_type=args.noise_type,
-                               noise_rate=args.noise_rate
-                        )
-    
-if args.dataset=='cifar10':
-    input_channel=3
-    num_classes=10
-    args.top_bn = False
-    args.epoch_decay_start = 80
-    # args.epoch_decay_start = 200
-    args.n_epoch = 200
-    train_dataset = CIFAR10(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                           )
-    
-    test_dataset = CIFAR10(root='./data/',
-                                download=True,  
-                                train=False, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                          )
+input_channel=3
+num_classes=10
+args.top_bn = False
+args.epoch_decay_start = 80
+# args.epoch_decay_start = 200
+args.n_epoch = 200
+train_dataset = CIFAR10(root='./data/',
+                            download=True,  
+                            train=True, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                       )
 
-if args.dataset=='cifar100':
-    input_channel=3
-    num_classes=100
-    args.top_bn = False
-    args.epoch_decay_start = 100
-    args.n_epoch = 200
-    train_dataset = CIFAR100(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                            )
-    
-    test_dataset = CIFAR100(root='./data/',
-                                download=True,  
-                                train=False, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                            )
+test_dataset = CIFAR10(root='./data/',
+                            download=True,  
+                            train=False, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                      )
 
 if args.forget_rate is None:
     forget_rate=args.noise_rate
@@ -140,7 +94,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str=args.dataset+'_rand_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
+model_str=args.dataset+'_rand_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
