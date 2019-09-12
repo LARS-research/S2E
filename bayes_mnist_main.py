@@ -7,26 +7,24 @@ from torch.autograd import Variable
 import torchvision.transforms as transforms
 from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
-from model import CNN
+from model import MLP
 import argparse, sys
 import numpy as np
 import datetime
 import shutil
 
-from loss import loss_coteaching
 from dragonfly import maximise_function
+from loss import loss_coteaching
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', type = float, default = 0.1)
+parser.add_argument('--lr', type = float, default = 0.001)
 parser.add_argument('--result_dir', type = str, help = 'dir to save result txt files', default = 'results/')
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
-parser.add_argument('--top_bn', action='store_true')
-parser.add_argument('--dataset', type = str, help = 'mnist, cifar10, or cifar100', default = 'mnist')
 parser.add_argument('--n_epoch', type=int, default=200)
-parser.add_argument('--test_epoch', type=int, default=20)
 parser.add_argument('--n_iter', type=int, default=1)
+parser.add_argument('--n_samples', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
@@ -44,73 +42,25 @@ batch_size = 128
 learning_rate = args.lr 
 
 # load dataset
-if args.dataset=='mnist':
-    input_channel=1
-    num_classes=10
-    args.top_bn = False
-    args.epoch_decay_start = 80
-    args.n_epoch = 200
-    train_dataset = MNIST(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                         )
+num_classes=10
+args.epoch_decay_start = 200
+args.n_epoch = 200
+train_dataset = MNIST(root='./data/',
+                            download=True,  
+                            train=True, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                     )
     
-    test_dataset = MNIST(root='./data/',
-                               download=True,  
-                               train=False, 
-                               transform=transforms.ToTensor(),
-                               noise_type=args.noise_type,
-                               noise_rate=args.noise_rate
-                        )
+test_dataset = MNIST(root='./data/',
+                           download=True,  
+                           train=False, 
+                           transform=transforms.ToTensor(),
+                           noise_type=args.noise_type,
+                           noise_rate=args.noise_rate
+                    )
     
-if args.dataset=='cifar10':
-    input_channel=3
-    num_classes=10
-    args.top_bn = False
-    # args.epoch_decay_start = 80
-    args.epoch_decay_start = 200
-    args.n_epoch = 200
-    train_dataset = CIFAR10(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                           )
-    
-    test_dataset = CIFAR10(root='./data/',
-                                download=True,  
-                                train=False, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                          )
-
-if args.dataset=='cifar100':
-    input_channel=3
-    num_classes=100
-    args.top_bn = False
-    args.epoch_decay_start = 100
-    args.n_epoch = 200
-    train_dataset = CIFAR100(root='./data/',
-                                download=True,  
-                                train=True, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                            )
-    
-    test_dataset = CIFAR100(root='./data/',
-                                download=True,  
-                                train=False, 
-                                transform=transforms.ToTensor(),
-                                noise_type=args.noise_type,
-                                noise_rate=args.noise_rate
-                            )
-
 if args.forget_rate is None:
     forget_rate=args.noise_rate
 else:
@@ -120,28 +70,30 @@ noise_or_not = train_dataset.noise_or_not
 
 # Adjust learning rate and betas for Adam Optimizer
 mom1 = 0.9
-# mom2 = 0.1
+mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
+'''
 alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
 alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
 alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
+'''
+alpha_plan[80:]=learning_rate-learning_rate*np.arange(args.n_epoch-80,dtype=float)/(args.n_epoch-80)
 beta1_plan = [mom1] * args.n_epoch
-# for i in range(args.epoch_decay_start, args.n_epoch):
-    # alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
-    # beta1_plan[i] = mom2
+beta1_plan[80:]=[mom2] * (args.n_epoch-80)
+# print(alpha_plan,beta1_plan)
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr']=alpha_plan[epoch]
         param_group['momentum']=beta1_plan[epoch] # Only change beta1
         
-save_dir = args.result_dir +'/' +args.dataset+'/'
+save_dir = args.result_dir +'/mnist/'
 
 if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str=args.dataset+'_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % nowTime)
+model_str='mnist_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -265,74 +217,15 @@ def black_box_function(opt_param):
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn1 = MLP(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
+    cnn2 = MLP(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
-    
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    
-    epoch=0
-    train_acc1=0
-    train_acc2=0
-    # evaluate models with random weights
-    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-    # save results
-    with open(txtfile, "a") as myfile:
-        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
-    # training
-    for epoch in range(1, args.test_epoch):
-        # train models
-        cnn1.train()
-        adjust_learning_rate(optimizer1, epoch)
-        cnn2.train()
-        adjust_learning_rate(optimizer2, epoch)
-        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
-        # evaluate models
-        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-        # save results
-        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
-        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
-        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-        with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
-    return (test_acc1+test_acc2)/200
-
-def main():
-    domain = [[0,1], [0,1], [0,0.5], [0,1], [0,0.5]]
-    max_capital = args.n_iter
-    max_val, max_pt, history = maximise_function(lambda opt_param: black_box_function(opt_param), domain, max_capital)
-    
-    hyp_param=np.zeros(6)
-    hyp_param[0]=max_pt[0]
-    hyp_param[1]=1-max_pt[0]
-    hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
-    hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
-
-    mean_pure_ratio1=0
-    mean_pure_ratio2=0
-
-    print('building model...')
-    cnn1 = CNN(input_channel=input_channel, n_outputs=num_classes)
-    cnn1.cuda()
-    print(cnn1.parameters)
-    optimizer1 = torch.optim.SGD(cnn1.parameters(), lr=learning_rate)
-    
-    cnn2 = CNN(input_channel=input_channel, n_outputs=num_classes)
-    cnn2.cuda()
-    print(cnn2.parameters)
-    optimizer2 = torch.optim.SGD(cnn2.parameters(), lr=learning_rate)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
     rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
     print('Schedule:',rate_schedule,hyp_param)
@@ -362,7 +255,89 @@ def main():
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ': '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+
+    return (test_acc1+test_acc2)/200
+
+def main():
+    
+    np.random.seed(args.seed)
+    '''
+    cur_acc=0
+    max_acc=0
+    cur_param=np.random.rand(5)
+    max_pt=np.random.rand(5)
+    for iii in range(args.n_iter):
+        for jjj in range(args.n_samples):
+            for kkk in range(5):
+                cur_param[kkk]=np.random.beta(1,1)
+            cur_param[2]*=0.5
+            cur_param[4]*=0.5
+            cur_acc=black_box_function(cur_param)
+            if max_acc<cur_acc:
+                max_acc=cur_acc
+                max_pt=cur_param.copy()
+    '''
+    domain = [[0,1],[0,1],[0,0.5],[0,1],[0,0.5]]
+    max_capital = args.n_iter*args.n_samples
+    max_val, max_pt, history = maximise_function(black_box_function, domain, max_capital)
+    hyp_param=np.zeros(6)
+    hyp_param[0]=max_pt[0]
+    hyp_param[1]=1-max_pt[0]
+    hyp_param[2]=max_pt[1]
+    hyp_param[3]=max_pt[2]
+    hyp_param[4]=max_pt[3]
+    hyp_param[5]=max_pt[4]
+
+    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
+    print('Schedule:',rate_schedule,hyp_param)
+    
+    mean_pure_ratio1=0
+    mean_pure_ratio2=0
+
+    print('building model...')
+    cnn1 = MLP(n_outputs=num_classes)
+    cnn1.cuda()
+    print(cnn1.parameters)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
+    
+    cnn2 = MLP(n_outputs=num_classes)
+    cnn2.cuda()
+    print(cnn2.parameters)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
+    '''
+    rate_schedule=np.ones(args.n_epoch)*forget_rate
+    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
+    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
+    # rate_schedule=np.zeros(args.n_epoch)
+    print(rate_schedule)
+    '''
+    epoch=0
+    train_acc1=0
+    train_acc2=0
+    # evaluate models with random weights
+    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+    # save results
+    with open(txtfile, "a") as myfile:
+        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+
+    # training
+    for epoch in range(1, args.n_epoch):
+        # train models
+        cnn1.train()
+        adjust_learning_rate(optimizer1, epoch)
+        cnn2.train()
+        adjust_learning_rate(optimizer2, epoch)
+        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
+        # evaluate models
+        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+        # save results
+        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
+        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
+        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+        with open(txtfile, "a") as myfile:
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
 if __name__=='__main__':
     main()
