@@ -290,7 +290,7 @@ def main():
     '''
     rate_schedule=np.ones(args.n_epoch)*forget_rate
     rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
-    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
+    # rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
     # rate_schedule=np.zeros(args.n_epoch)
     print(rate_schedule)
     '''
