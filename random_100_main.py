@@ -205,14 +205,6 @@ def evaluate(test_loader, model1, model2):
     return acc1, acc2
 
 def black_box_function(opt_param):
-    hyp_param=np.zeros(6)
-    hyp_param[0]=opt_param[0]
-    hyp_param[1]=1-opt_param[0]
-    hyp_param[2]=opt_param[1]
-    hyp_param[3]=opt_param[2]
-    hyp_param[4]=opt_param[3]
-    hyp_param[5]=opt_param[4]
-
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
@@ -227,8 +219,8 @@ def black_box_function(opt_param):
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
+    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
     train_acc1=0
@@ -264,14 +256,16 @@ def main():
     np.random.seed(args.seed)
     cur_acc=0
     max_acc=0
-    cur_param=np.random.rand(5)
-    max_pt=np.random.rand(5)
+    cur_param=np.random.rand(7)
+    max_pt=np.random.rand(7)
     for iii in range(args.n_iter):
         for jjj in range(args.n_samples):
-            for kkk in range(5):
+            for kkk in range(7):
                 cur_param[kkk]=np.random.beta(1,1)
             cur_param[2]*=0.5
             cur_param[4]*=0.5
+            cur_param[5]/=0.5
+            cur_param[6]*=0.5
             cur_acc=black_box_function(cur_param)
             if max_acc<cur_acc:
                 max_acc=cur_acc
