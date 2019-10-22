@@ -258,28 +258,32 @@ def black_box_function(opt_param):
 
 def main():
     np.random.seed(args.seed)
-    cur_acc=0
-    cur_param=np.random.rand(7)
-    max_pt=np.random.rand(7)
+    cur_acc=np.zeros(args.n_samples)
+    idx=np.zeros(args.n_samples)
+    max_pt=np.zeros(7)
     hyphyp=np.ones(14)
-    loggrad=np.zeros((14,1))
     hypgrad=np.zeros((14,1))
     fisher=np.zeros((14,14))
     for iii in range(args.n_iter):
         print('Distribution:',hyphyp)
+        cur_param=np.zeros((args.n_samples,7))
+        loggrad=np.zeros((args.n_samples,14,1))
         for jjj in range(args.n_samples):
             for kkk in range(7):
-                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
-                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad*loggrad.T
-            cur_param[2]*=0.5
-            cur_param[4]*=0.5
-            cur_param[5]/=0.5
-            cur_param[6]*=0.5
-            cur_acc=black_box_function(cur_param)
-            hypgrad=hypgrad+cur_acc*loggrad
+                cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
+                loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
+            fisher=fisher+loggrad[jjj]*loggrad[jjj].T
+            cur_param[jjj][2]*=0.5
+            cur_param[jjj][4]*=0.5
+            cur_param[jjj][5]/=0.5
+            cur_param[jjj][6]*=0.5
+            cur_acc[jjj]=black_box_function(cur_param[jjj])
+        idx=np.argsort(cur_acc)
+        hypgrad=hypgrad+loggrad[idx[-1]]
 
+        cur_param=np.zeros(7)
+        loggrad=np.zeros((14,1))
         for jjj in range(args.fisher_samples):
             for kkk in range(7):
                 cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])

@@ -256,8 +256,8 @@ def main():
     np.random.seed(args.seed)
     cur_acc=0
     max_acc=0
-    cur_param=np.random.rand(7)
-    max_pt=np.random.rand(7)
+    cur_param=np.zeros(7)
+    max_pt=np.zeros(7)
     for iii in range(args.n_iter):
         for jjj in range(args.n_samples):
             for kkk in range(7):

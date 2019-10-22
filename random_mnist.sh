@@ -1,8 +1,8 @@
 #!/bin/bash
-for((i=1;i<=1;i=i+1))
+for((i=2;i<=10;i=i+1))
 do
-	# echo "Lap:" $i
-	python random_mnist_main.py --noise_type symmetric --noise_rate 0.5 --num_workers 1 --n_iter 20 --n_samples 2 --result_dir result6/ --seed 2 &
-	python random_mnist_main.py --noise_type symmetric --noise_rate 0.2 --num_workers 1 --n_iter 20 --n_samples 2 --result_dir result6/ --seed 3 &
-	python random_mnist_main.py --noise_type pairflip --noise_rate 0.45 --num_workers 1 --n_iter 20 --n_samples 2 --result_dir result6/ --seed 6 &
+	echo "Lap:" $i
+	python random_mnist_main.py --noise_type symmetric --noise_rate 0.5 --num_workers 1 --n_iter 20 --n_samples 2 --seed $i 
+	python random_mnist_main.py --noise_type symmetric --noise_rate 0.2 --num_workers 1 --n_iter 20 --n_samples 2 --seed $i 
+	python random_mnist_main.py --noise_type pairflip --noise_rate 0.45 --num_workers 1 --n_iter 20 --n_samples 2 --seed $i
 done
