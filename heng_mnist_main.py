@@ -287,7 +287,7 @@ def main():
         hypgrad=loggrad[idx[-1]]
         hessian=loggrad[idx[-1]]*loggrad[idx[-1]].T+loghess[idx[-1]]
         hypgrad=hypgrad/args.n_samples
-        hessian=hessian/args.n_samples
+        hessian=hessian/args.n_samples+1e-6*np.ones((14,14))
         hessian=inv(hessian)
         hypgrad=args.delta*hessian*hypgrad
         hyphyp=hyphyp+hypgrad[:,0]
