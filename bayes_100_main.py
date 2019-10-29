@@ -7,7 +7,7 @@ from torch.autograd import Variable
 import torchvision.transforms as transforms
 from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
-from model import MLP
+from model import CNN_large
 import argparse, sys
 import numpy as np
 import datetime
@@ -22,6 +22,7 @@ parser.add_argument('--result_dir', type = str, help = 'dir to save result txt f
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
+parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--n_samples', type=int, default=1)
@@ -42,25 +43,27 @@ batch_size = 128
 learning_rate = args.lr 
 
 # load dataset
-num_classes=10
-args.epoch_decay_start = 200
+input_channel=3
+num_classes=100
+args.top_bn = False
+args.epoch_decay_start = 80
 args.n_epoch = 200
-train_dataset = MNIST(root='./data/',
+train_dataset = CIFAR100(root='./data/',
                             download=True,  
                             train=True, 
                             transform=transforms.ToTensor(),
                             noise_type=args.noise_type,
                             noise_rate=args.noise_rate
-                     )
-    
-test_dataset = MNIST(root='./data/',
-                           download=True,  
-                           train=False, 
-                           transform=transforms.ToTensor(),
-                           noise_type=args.noise_type,
-                           noise_rate=args.noise_rate
-                    )
-    
+                        )
+
+test_dataset = CIFAR100(root='./data/',
+                            download=True,  
+                            train=False, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                        )
+
 if args.forget_rate is None:
     forget_rate=args.noise_rate
 else:
@@ -72,28 +75,26 @@ noise_or_not = train_dataset.noise_or_not
 mom1 = 0.9
 mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
-'''
-alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
-alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
-alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
-'''
-alpha_plan[80:]=learning_rate-learning_rate*np.arange(args.n_epoch-80,dtype=float)/(args.n_epoch-80)
+# alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
+# alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
+# alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
 beta1_plan = [mom1] * args.n_epoch
-beta1_plan[80:]=[mom2] * (args.n_epoch-80)
-# print(alpha_plan,beta1_plan)
+for i in range(args.epoch_decay_start, args.n_epoch):
+    alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
+    beta1_plan[i] = mom2
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr']=alpha_plan[epoch]
         param_group['momentum']=beta1_plan[epoch] # Only change beta1
         
-save_dir = args.result_dir +'/mnist/'
+save_dir = args.result_dir +'/cifar100/' 
 
 if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='cifar100_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -209,12 +210,12 @@ def black_box_function(opt_param):
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
+    cnn1 = CNN_large(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = MLP(n_outputs=num_classes)
+    cnn2 = CNN_large(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
@@ -249,7 +250,7 @@ def black_box_function(opt_param):
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
-    return (test_acc1+test_acc2)/200
+    return -(test_acc1+test_acc2)/200
 
 def main():
     
@@ -257,6 +258,6 @@ def main():
     trials = Trials()
     np.random.seed(args.seed)
     best = fmin(black_box_function, rstate=np.random.RandomState(seed=args.seed),space=space,algo=tpe.suggest,max_evals=args.n_iter*args.n_samples,trials=trials)
-
+    
 if __name__=='__main__':
     main()
