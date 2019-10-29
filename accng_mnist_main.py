@@ -94,7 +94,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_ng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='mnist_accng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -258,13 +258,16 @@ def main():
     cur_acc=np.zeros(args.n_samples)
     idx=np.zeros(args.n_samples)
     max_pt=np.zeros(7)
+    hyphyp0=np.ones(14)
     hyphyp=np.ones(14)
-    hypgrad=np.zeros((14,1))
-    fisher=np.zeros((14,14))
+    yhyp=np.ones(14)
+    acclist=np.zeros(7)
     for iii in range(args.n_iter):
         print('Distribution:',hyphyp)
         cur_param=np.zeros((args.n_samples,7))
         loggrad=np.zeros((args.n_samples,14,1))
+        hypgrad=np.zeros((14,1))
+        fisher=np.zeros((14,14))
         for jjj in range(args.n_samples):
             for kkk in range(7):
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
@@ -276,23 +279,52 @@ def main():
             cur_param[jjj][5]/=0.5
             cur_param[jjj][6]*=0.5
             cur_acc[jjj]=black_box_function(cur_param[jjj])
+        acclist[:6]=acclist[1:]
+        acclist[6]=np.mean(cur_acc)
         idx=np.argsort(cur_acc)
         hypgrad=hypgrad+loggrad[idx[-1]]
 
+        yhyp=hyphyp+iii*(hyphyp-hyphyp0)/(iii+3)
+        print('New Distribution:',yhyp)
+        cur_param=np.zeros((args.n_samples,7))
+        yloggrad=np.zeros((args.n_samples,14,1))
+        yhypgrad=np.zeros((14,1))
+        yfisher=np.zeros((14,14))
+        for jjj in range(args.n_samples):
+            for kkk in range(7):
+                cur_param[jjj][kkk]=np.random.beta(yhyp[2*kkk],yhyp[2*kkk+1])
+                yloggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk])
+                yloggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk+1])
+            yfisher=fisher+yloggrad[jjj]*yloggrad[jjj].T
+            cur_param[jjj][2]*=0.5
+            cur_param[jjj][4]*=0.5
+            cur_param[jjj][5]/=0.5
+            cur_param[jjj][6]*=0.5
+            cur_acc[jjj]=black_box_function(cur_param[jjj])
+        idx=np.argsort(cur_acc)
+        yhypgrad=yhypgrad+yloggrad[idx[-1]]
+
+        if np.mean(cur_acc)>np.amin(acclist):
+            print('Accelerated!')
+        else:
+            yhyp=hyphyp.copy()
+            yhypgrad=hypgrad.copy()
+            yfisher=fisher.copy()
         cur_param=np.zeros(7)
         loggrad=np.zeros((14,1))
         for jjj in range(args.fisher_samples):
             for kkk in range(7):
-                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
-                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad*loggrad.T
+                cur_param[kkk]=np.random.beta(yhyp[2*kkk],yhyp[2*kkk+1])
+                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk])
+                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk+1])
+            yfisher=yfisher+loggrad*loggrad.T
 
-        hypgrad=hypgrad/args.n_samples
-        fisher=fisher/(args.n_samples+args.fisher_samples)
-        fisher=inv(fisher)
-        hypgrad=args.delta*np.dot(fisher,hypgrad)/(np.dot(hypgrad.T,np.dot(fisher,hypgrad)))
-        hyphyp=hyphyp+hypgrad[:,0]
+        yhypgrad=yhypgrad/args.n_samples
+        yfisher=yfisher/(args.n_samples+args.fisher_samples)
+        yfisher=inv(yfisher)
+        yhypgrad=args.delta*np.dot(yfisher,yhypgrad)/(np.dot(yhypgrad.T,np.dot(yfisher,yhypgrad)))
+        hyphyp0=hyphyp.copy()
+        hyphyp=yhyp+yhypgrad[:,0]
         hyphyp=np.maximum(hyphyp,1)
     
     for kkk in range(5):
