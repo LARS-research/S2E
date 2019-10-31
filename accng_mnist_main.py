@@ -267,13 +267,11 @@ def main():
         cur_param=np.zeros((args.n_samples,7))
         loggrad=np.zeros((args.n_samples,14,1))
         hypgrad=np.zeros((14,1))
-        fisher=np.zeros((14,14))
         for jjj in range(args.n_samples):
             for kkk in range(7):
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
                 loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
                 loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad[jjj]*loggrad[jjj].T
             cur_param[jjj][2]*=0.5
             cur_param[jjj][4]*=0.5
             cur_param[jjj][5]/=0.5
@@ -289,13 +287,11 @@ def main():
         cur_param=np.zeros((args.n_samples,7))
         yloggrad=np.zeros((args.n_samples,14,1))
         yhypgrad=np.zeros((14,1))
-        yfisher=np.zeros((14,14))
         for jjj in range(args.n_samples):
             for kkk in range(7):
                 cur_param[jjj][kkk]=np.random.beta(yhyp[2*kkk],yhyp[2*kkk+1])
                 yloggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk])
                 yloggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk+1])
-            yfisher=fisher+yloggrad[jjj]*yloggrad[jjj].T
             cur_param[jjj][2]*=0.5
             cur_param[jjj][4]*=0.5
             cur_param[jjj][5]/=0.5
@@ -309,84 +305,13 @@ def main():
         else:
             yhyp=hyphyp.copy()
             yhypgrad=hypgrad.copy()
-            yfisher=fisher.copy()
-        cur_param=np.zeros(7)
-        loggrad=np.zeros((14,1))
-        for jjj in range(args.fisher_samples):
-            for kkk in range(7):
-                cur_param[kkk]=np.random.beta(yhyp[2*kkk],yhyp[2*kkk+1])
-                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk])
-                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk+1])
-            yfisher=yfisher+loggrad*loggrad.T
 
         yhypgrad=yhypgrad/args.n_samples
-        yfisher=yfisher/(args.n_samples+args.fisher_samples)
-        yfisher=inv(yfisher)
+        yfisher=np.identity((14,14))
         yhypgrad=args.delta*np.dot(yfisher,yhypgrad)/(np.dot(yhypgrad.T,np.dot(yfisher,yhypgrad)))
         hyphyp0=hyphyp.copy()
         hyphyp=yhyp+yhypgrad[:,0]
         hyphyp=np.maximum(hyphyp,1)
     
-    for kkk in range(5):
-        max_pt[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-
-    hyp_param=np.zeros(6)
-    hyp_param[0]=max_pt[0]
-    hyp_param[1]=1-max_pt[0]
-    hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]*0.5
-    hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]*0.5
-
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    
-    mean_pure_ratio1=0
-    mean_pure_ratio2=0
-
-    print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
-    cnn1.cuda()
-    print(cnn1.parameters)
-    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
-    
-    cnn2 = MLP(n_outputs=num_classes)
-    cnn2.cuda()
-    print(cnn2.parameters)
-    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
-    '''
-    rate_schedule=np.ones(args.n_epoch)*forget_rate
-    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
-    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
-    # rate_schedule=np.zeros(args.n_epoch)
-    print(rate_schedule)
-    '''
-    epoch=0
-    train_acc1=0
-    train_acc2=0
-    # evaluate models with random weights
-    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-    # save results
-    with open(txtfile, "a") as myfile:
-        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
-    # training
-    for epoch in range(1, args.n_epoch):
-        # train models
-        cnn1.train()
-        adjust_learning_rate(optimizer1, epoch)
-        cnn2.train()
-        adjust_learning_rate(optimizer2, epoch)
-        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
-        # evaluate models
-        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-        # save results
-        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
-        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
-        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-        with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
 if __name__=='__main__':
     main()
