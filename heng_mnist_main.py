@@ -288,10 +288,10 @@ def main():
         hessian=loggrad[idx[-1]]*loggrad[idx[-1]].T+loghess[idx[-1]]
         hypgrad=hypgrad/args.n_samples
         hessian=hessian/args.n_samples
-        u, s, vh = svd(hessian,full_matrices=False)
+        u, s, vh = np.linalg.svd(hessian,full_matrices=False)
         print(u,s,vh)
-        s=np.maximum(s,0)
-        hessian=np.dot(np.dot(u,s),vh)
+        s=np.maximum(s,1e-5)
+        hessian=np.dot(np.dot(u,np.diag(s)),vh)
         hessian=inv(hessian)
         hypgrad=args.delta*hessian*hypgrad
         hyphyp=hyphyp+hypgrad[:,0]

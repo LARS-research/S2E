@@ -307,7 +307,7 @@ def main():
             yhypgrad=hypgrad.copy()
 
         yhypgrad=yhypgrad/args.n_samples
-        yfisher=np.identity((14,14))
+        yfisher=np.identity(14)
         yhypgrad=args.delta*np.dot(yfisher,yhypgrad)/(np.dot(yhypgrad.T,np.dot(yfisher,yhypgrad)))
         hyphyp0=hyphyp.copy()
         hyphyp=yhyp+yhypgrad[:,0]
