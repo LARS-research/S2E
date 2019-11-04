@@ -12,7 +12,7 @@ import numpy as np
 import datetime
 
 from loss import loss_coteaching
-from scipy.special import psi
+from scipy.special import psi,polygamma
 from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
@@ -94,7 +94,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_ng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='mnist_heng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -260,101 +260,42 @@ def main():
     max_pt=np.zeros(7)
     hyphyp=np.ones(14)
     hypgrad=np.zeros((14,1))
-    fisher=np.zeros((14,14))
+    hessian=np.zeros((14,14))
     for iii in range(args.n_iter):
         print('Distribution:',hyphyp)
         cur_param=np.zeros((args.n_samples,7))
         loggrad=np.zeros((args.n_samples,14,1))
+        loghess=np.zeros((args.n_samples,14,14))
         for jjj in range(args.n_samples):
             for kkk in range(7):
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
                 loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
                 loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad[jjj]*loggrad[jjj].T
+                loghess[jjj][2*kkk][2*kkk]=polygamma(1,hyphyp[2*kkk]+hyphyp[2*kkk+1])-polygamma(1,hyphyp[2*kkk])
+                loghess[jjj][2*kkk][2*kkk+1]=polygamma(1,hyphyp[2*kkk]+hyphyp[2*kkk+1])
+                loghess[jjj][2*kkk+1][2*kkk]=polygamma(1,hyphyp[2*kkk]+hyphyp[2*kkk+1])
+                loghess[jjj][2*kkk+1][2*kkk+1]=polygamma(1,hyphyp[2*kkk]+hyphyp[2*kkk+1])-polygamma(1,hyphyp[2*kkk+1])
             cur_param[jjj][2]*=0.5
             cur_param[jjj][4]*=0.5
             cur_param[jjj][5]/=0.5
             cur_param[jjj][6]*=0.5
             cur_acc[jjj]=black_box_function(cur_param[jjj])
+
         idx=np.argsort(cur_acc)
-        hypgrad=hypgrad+loggrad[idx[-1]]
-
-        cur_param=np.zeros(7)
-        loggrad=np.zeros((14,1))
-        for jjj in range(args.fisher_samples):
-            for kkk in range(7):
-                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
-                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad*loggrad.T
-
+        hypgrad=loggrad[idx[-1]]
+        hessian=loggrad[idx[-1]]*loggrad[idx[-1]].T+loghess[idx[-1]]
         hypgrad=hypgrad/args.n_samples
-        fisher=fisher/(args.n_samples+args.fisher_samples)
-        fisher=inv(fisher)
-        hypgrad=args.delta*np.dot(fisher,hypgrad)/(np.dot(hypgrad.T,np.dot(fisher,hypgrad)))
+        hessian=hessian/args.n_samples
+        u, s, vh = np.linalg.svd(hessian,full_matrices=False)
+        print(u,s,vh)
+        s=np.maximum(s,1e-5)
+        hessian=np.dot(np.dot(u,np.diag(s)),vh)
+        hessian=inv(hessian)
+        hypgrad=args.delta*hessian*hypgrad
         hyphyp=hyphyp+hypgrad[:,0]
         hyphyp=np.maximum(hyphyp,1)
     
-    for kkk in range(5):
-        max_pt[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-
-    hyp_param=np.zeros(6)
-    hyp_param[0]=max_pt[0]
-    hyp_param[1]=1-max_pt[0]
-    hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]*0.5
-    hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]*0.5
-
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    
-    mean_pure_ratio1=0
-    mean_pure_ratio2=0
-
-    print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
-    cnn1.cuda()
-    print(cnn1.parameters)
-    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
-    
-    cnn2 = MLP(n_outputs=num_classes)
-    cnn2.cuda()
-    print(cnn2.parameters)
-    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
-    '''
-    rate_schedule=np.ones(args.n_epoch)*forget_rate
-    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
-    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
-    # rate_schedule=np.zeros(args.n_epoch)
-    print(rate_schedule)
-    '''
-    epoch=0
-    train_acc1=0
-    train_acc2=0
-    # evaluate models with random weights
-    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-    # save results
-    with open(txtfile, "a") as myfile:
-        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
-    # training
-    for epoch in range(1, args.n_epoch):
-        # train models
-        cnn1.train()
-        adjust_learning_rate(optimizer1, epoch)
-        cnn2.train()
-        adjust_learning_rate(optimizer2, epoch)
-        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
-        # evaluate models
-        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-        # save results
-        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
-        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
-        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-        with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
 if __name__=='__main__':
     main()
