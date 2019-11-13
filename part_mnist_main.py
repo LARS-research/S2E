@@ -94,7 +94,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_ng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='mnist_part_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -220,7 +220,8 @@ def black_box_function(opt_param):
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=1-1/np.power((opt_param[1]*np.arange(args.n_epoch,dtype=float)+1),opt_param[0])
+    # rate_schedule=1-1/np.power((opt_param[1]*np.arange(args.n_epoch,dtype=float)+1),opt_param[0])
+    rate_schedule=1-np.exp(opt_param[1]*np.arange(args.n_epoch,dtype=float),opt_param[0])
     print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
