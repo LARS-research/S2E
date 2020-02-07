@@ -5,15 +5,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as transforms
+from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
-from model import MLP
+from model import CNN
 import argparse, sys
 import numpy as np
 import datetime
+import shutil
 
 from loss import loss_coteaching
-from scipy.special import psi
-from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.001)
@@ -22,11 +22,11 @@ parser.add_argument('--noise_rate', type = float, help = 'corruption rate, shoul
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
 parser.add_argument('--n_epoch', type=int, default=200)
+parser.add_argument('--test_epoch', type=int, default=20)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--n_samples', type=int, default=1)
-parser.add_argument('--fisher_samples', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
-parser.add_argument('--delta', type=float, default=1)
+parser.add_argument('--eta', type=float, default=3)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
 parser.add_argument('--num_iter_per_epoch', type=int, default=400)
@@ -43,25 +43,28 @@ batch_size = 128
 learning_rate = args.lr 
 
 # load dataset
+input_channel=3
 num_classes=10
-args.epoch_decay_start = 200
+args.top_bn = False
+args.epoch_decay_start = 80
+# args.epoch_decay_start = 200
 args.n_epoch = 200
-train_dataset = MNIST(root='./data/',
+train_dataset = CIFAR10(root='./data/',
                             download=True,  
                             train=True, 
                             transform=transforms.ToTensor(),
                             noise_type=args.noise_type,
                             noise_rate=args.noise_rate
-                     )
-    
-test_dataset = MNIST(root='./data/',
-                           download=True,  
-                           train=False, 
-                           transform=transforms.ToTensor(),
-                           noise_type=args.noise_type,
-                           noise_rate=args.noise_rate
-                    )
-    
+                       )
+
+test_dataset = CIFAR10(root='./data/',
+                            download=True,  
+                            train=False, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                      )
+
 if args.forget_rate is None:
     forget_rate=args.noise_rate
 else:
@@ -73,28 +76,26 @@ noise_or_not = train_dataset.noise_or_not
 mom1 = 0.9
 mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
-'''
-alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
-alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
-alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
-'''
-alpha_plan[80:]=learning_rate-learning_rate*np.arange(args.n_epoch-80,dtype=float)/(args.n_epoch-80)
+# alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
+# alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
+# alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
 beta1_plan = [mom1] * args.n_epoch
-beta1_plan[80:]=[mom2] * (args.n_epoch-80)
-# print(alpha_plan,beta1_plan)
+for i in range(args.epoch_decay_start, args.n_epoch):
+    alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
+    beta1_plan[i] = mom2
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr']=alpha_plan[epoch]
         param_group['momentum']=beta1_plan[epoch] # Only change beta1
         
-save_dir = args.result_dir +'/mnist/'
+save_dir = args.result_dir +'/cifar10/'
 
 if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_ng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='cifar10_band_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -170,7 +171,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
             print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
-                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
+                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.item(), loss_2.item(), np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
     train_acc2=float(train_correct2)/float(train_total2)
@@ -205,22 +206,27 @@ def evaluate(test_loader, model1, model2):
     acc2 = 100*float(correct2)/float(total2)
     return acc1, acc2
 
-def black_box_function(opt_param):
+def black_box_function(opt_param,ri):
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = MLP(n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    # rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))\
++(1-opt_param[0])*opt_param[7]*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))\
++(1-opt_param[0])*(1-opt_param[7])*(1-np.log(1+opt_param[8])/np.log(1+opt_param[8]+opt_param[9]*np.arange(args.n_epoch,dtype=float)))\
+-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]\
+-np.log(1+np.power(np.arange(args.n_epoch,dtype=float),opt_param[11]))/np.log(1+np.power(args.n_epoch,opt_param[11]))*opt_param[10]
     print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
@@ -234,7 +240,7 @@ def black_box_function(opt_param):
         myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     # training
-    for epoch in range(1, args.n_epoch):
+    for epoch in range(1, int(ri)):
         # train models
         cnn1.train()
         adjust_learning_rate(optimizer1, epoch)
@@ -253,83 +259,57 @@ def black_box_function(opt_param):
     return (test_acc1+test_acc2)/200
 
 def main():
-    
-    np.random.seed(args.seed)
-    cur_acc=np.zeros(args.n_samples)
-    idx=np.zeros(args.n_samples)
-    max_pt=np.zeros(7)
-    hyphyp=np.ones(14)
-    hypgrad=np.zeros((14,1))
-    fisher=np.zeros((14,14))
-    for iii in range(args.n_iter):
-        print('Distribution:',hyphyp)
-        cur_param=np.zeros((args.n_samples,7))
-        loggrad=np.zeros((args.n_samples,14,1))
-        for jjj in range(args.n_samples):
-            for kkk in range(7):
-                cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-                loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
-                loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad[jjj]*loggrad[jjj].T
-            cur_param[jjj][2]*=0.5
-            cur_param[jjj][4]*=0.5
-            cur_param[jjj][5]/=0.5
-            cur_param[jjj][6]*=0.5
-            cur_acc[jjj]=black_box_function(cur_param[jjj])
-        idx=np.argsort(cur_acc)
-        hypgrad=hypgrad+loggrad[idx[-1]]
-
-        cur_param=np.zeros(7)
-        loggrad=np.zeros((14,1))
-        for jjj in range(args.fisher_samples):
-            for kkk in range(7):
-                cur_param[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-                loggrad[2*kkk][0]=np.log(cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
-                loggrad[2*kkk+1][0]=np.log(1-cur_param[kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
-            fisher=fisher+loggrad*loggrad.T
-
-        hypgrad=hypgrad/args.n_samples
-        fisher=fisher/(args.n_samples+args.fisher_samples)
-        fisher=inv(fisher)
-        hypgrad=args.delta*np.dot(fisher,hypgrad)/(np.dot(hypgrad.T,np.dot(fisher,hypgrad)))
-        hyphyp=hyphyp+hypgrad[:,0]
-        hyphyp=np.maximum(hyphyp,1)
-    
-    for kkk in range(5):
-        max_pt[kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
-
-    hyp_param=np.zeros(6)
-    hyp_param[0]=max_pt[0]
-    hyp_param[1]=1-max_pt[0]
-    hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]*0.5
-    hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]*0.5
-
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
+    max_acc=0
+    num_param=12
+    opt_param=np.zeros(12)
+    smax=int(np.floor(np.log(args.test_epoch)/np.log(args.eta)))
+    B=(smax+1)*args.test_epoch
+    for s in range(smax+1):
+        s=smax-s
+        n=int(np.ceil((smax+1)/(s+1)*np.power(args.eta,s)))
+        r=args.test_epoch/np.power(args.eta,s)
+        T=np.random.rand(n,num_param)
+        T[:,2]*=0.5
+        T[:,4]*=0.5
+        T[:,9]*=0.5
+        T[:,5]/=0.5
+        T[:,6]*=0.5
+        T[:,11]/=0.5
+        T[:,10]*=0.5
+        for iii in range(s+1):
+            ni=np.floor(n/np.power(args.eta,iii))
+            ri=np.ceil(r*np.power(args.eta,iii)) # maybe floor?
+            test_runs=T.shape[0]
+            L=np.zeros(test_runs)
+            for jjj in range(test_runs):
+                L[jjj]=black_box_function(T[jjj],ri)
+            idx=np.argsort(L)
+            T=T[idx[-int(np.floor(ni/args.eta)):]].copy()
+        if L[-1]>max_acc:
+            max_acc=L[-1]
+            opt_param=T[-1].copy()
     
     mean_pure_ratio1=0
     mean_pure_ratio2=0
 
+    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))\
++(1-opt_param[0])*opt_param[7]*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))\
++(1-opt_param[0])*(1-opt_param[7])*(1-np.log(1+opt_param[8])/np.log(1+opt_param[8]+opt_param[9]*np.arange(args.n_epoch,dtype=float)))\
+-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]\
+-np.log(1+np.power(np.arange(args.n_epoch,dtype=float),opt_param[11]))/np.log(1+np.power(args.n_epoch,opt_param[11]))*opt_param[10]
+    print('Schedule:',rate_schedule,opt_param)
+
     print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = MLP(n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
-    '''
-    rate_schedule=np.ones(args.n_epoch)*forget_rate
-    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
-    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
-    # rate_schedule=np.zeros(args.n_epoch)
-    print(rate_schedule)
-    '''
-    epoch=0
+
     train_acc1=0
     train_acc2=0
     # evaluate models with random weights
@@ -358,3 +338,4 @@ def main():
 
 if __name__=='__main__':
     main()
+    

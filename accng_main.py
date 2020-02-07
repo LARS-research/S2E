@@ -14,6 +14,8 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
+from scipy.special import psi
+from numpy.linalg.linalg import inv
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.001)
@@ -21,11 +23,12 @@ parser.add_argument('--result_dir', type = str, help = 'dir to save result txt f
 parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
 parser.add_argument('--forget_rate', type = float, help = 'forget rate', default = None)
 parser.add_argument('--noise_type', type = str, help='[pairflip, symmetric]', default='pairflip')
-parser.add_argument('--top_bn', action='store_true')
 parser.add_argument('--n_epoch', type=int, default=200)
 parser.add_argument('--n_iter', type=int, default=1)
 parser.add_argument('--n_samples', type=int, default=1)
+parser.add_argument('--fisher_samples', type=int, default=1)
 parser.add_argument('--seed', type=int, default=1)
+parser.add_argument('--delta', type=float, default=1)
 parser.add_argument('--print_freq', type=int, default=50)
 parser.add_argument('--num_workers', type=int, default=4, help='how many subprocesses to use for data loading')
 parser.add_argument('--num_iter_per_epoch', type=int, default=400)
@@ -94,7 +97,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='cifar10_rand_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='cifar10_accng_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -258,88 +261,69 @@ def black_box_function(opt_param):
     return (test_acc1+test_acc2)/200
 
 def main():
-     
+    
     np.random.seed(args.seed)
-    cur_acc=0
-    max_acc=0
+    cur_acc=np.zeros(args.n_samples)
+    idx=np.zeros(args.n_samples)
     num_param=12
-    cur_param=np.zeros(num_param)
     max_pt=np.zeros(num_param)
+    hyphyp0=np.ones(2*num_param)
+    hyphyp=np.ones(2*num_param)
+    yhyp=np.ones(2*num_param)
+    acclist=np.zeros(7)
     for iii in range(args.n_iter):
+        print('Distribution:',hyphyp)
+        cur_param=np.zeros((args.n_samples,num_param))
+        loggrad=np.zeros((args.n_samples,2*num_param,1))
+        hypgrad=np.zeros((2*num_param,1))
         for jjj in range(args.n_samples):
             for kkk in range(num_param):
-                cur_param[kkk]=np.random.beta(1,1)
-            cur_param[2]*=0.5
-            cur_param[4]*=0.5
-            cur_param[9]*=0.5
-            cur_param[5]/=0.5
-            cur_param[6]*=0.5
-            cur_param[11]/=0.5
-            cur_param[10]*=0.5
-            cur_acc=black_box_function(cur_param)
-            if max_acc<cur_acc:
-                max_acc=cur_acc
-                max_pt=cur_param.copy()
+                cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
+                loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
+                loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
+            cur_param[jjj][2]*=0.5
+            cur_param[jjj][4]*=0.5
+            cur_param[jjj][9]*=0.5
+            cur_param[jjj][5]/=0.5
+            cur_param[jjj][6]*=0.5
+            cur_param[jjj][11]/=0.5
+            cur_param[jjj][10]*=0.5
+            cur_acc[jjj]=black_box_function(cur_param[jjj])
+        acclist[:6]=acclist[1:]
+        acclist[6]=np.mean(cur_acc)
+        idx=np.argsort(cur_acc)
+        hypgrad=hypgrad+loggrad[idx[-1]]
 
-    hyp_param=np.zeros(6)
-    hyp_param[0]=max_pt[0]
-    hyp_param[1]=1-max_pt[0]
-    hyp_param[2]=max_pt[1]
-    hyp_param[3]=max_pt[2]
-    hyp_param[4]=max_pt[3]
-    hyp_param[5]=max_pt[4]
+        yhyp=hyphyp+iii*(hyphyp-hyphyp0)/(iii+3)
+        print('New Distribution:',yhyp)
+        cur_param=np.zeros((args.n_samples,num_param))
+        yloggrad=np.zeros((args.n_samples,2*num_param,1))
+        yhypgrad=np.zeros((2*num_param,1))
+        for jjj in range(args.n_samples):
+            for kkk in range(num_param):
+                cur_param[jjj][kkk]=np.random.beta(yhyp[2*kkk],yhyp[2*kkk+1])
+                yloggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk])
+                yloggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(yhyp[2*kkk]+yhyp[2*kkk+1])-psi(yhyp[2*kkk+1])
+            cur_param[jjj][2]*=0.5
+            cur_param[jjj][4]*=0.5
+            cur_param[jjj][5]/=0.5
+            cur_param[jjj][6]*=0.5
+            cur_acc[jjj]=black_box_function(cur_param[jjj])
+        idx=np.argsort(cur_acc)
+        yhypgrad=yhypgrad+yloggrad[idx[-1]]
+
+        if np.mean(cur_acc)>np.amin(acclist):
+            print('Accelerated!')
+        else:
+            yhyp=hyphyp.copy()
+            yhypgrad=hypgrad.copy()
+
+        yhypgrad=yhypgrad/args.n_samples
+        yfisher=np.identity(2*num_param)
+        yhypgrad=args.delta*np.dot(yfisher,yhypgrad)/(np.dot(yhypgrad.T,np.dot(yfisher,yhypgrad)))
+        hyphyp0=hyphyp.copy()
+        hyphyp=yhyp+yhypgrad[:,0]
+        hyphyp=np.maximum(hyphyp,1)
     
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print('Schedule:',rate_schedule,hyp_param)
-    '''
-    rate_schedule=np.ones(args.n_epoch)*forget_rate
-    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
-    rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
-    rate_schedule=np.zeros(args.n_epoch)
-    hyp_param=np.asarray([0.24419,0.75581,1,0.00135,0.68079,0.03778])
-    rate_schedule=hyp_param[0]*(1-np.exp(-hyp_param[3]*np.power(np.arange(args.n_epoch,dtype=float),hyp_param[2])))+hyp_param[1]*(1-1/np.power((hyp_param[5]*np.arange(args.n_epoch,dtype=float)+1),hyp_param[4]))
-    print(rate_schedule)
-    '''
-    epoch=0
-    mean_pure_ratio1=0
-    mean_pure_ratio2=0
-
-    print('building model...')
-    cnn1 = CNN(n_outputs=num_classes)
-    cnn1.cuda()
-    print(cnn1.parameters)
-    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
-    
-    cnn2 = CNN(n_outputs=num_classes)
-    cnn2.cuda()
-    print(cnn2.parameters)
-    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
-
-    train_acc1=0
-    train_acc2=0
-    # evaluate models with random weights
-    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-    # save results
-    with open(txtfile, "a") as myfile:
-        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
-    # training
-    for epoch in range(1, args.n_epoch):
-        # train models
-        cnn1.train()
-        adjust_learning_rate(optimizer1, epoch)
-        cnn2.train()
-        adjust_learning_rate(optimizer2, epoch)
-        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
-        # evaluate models
-        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
-        # save results
-        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
-        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
-        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
-        with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
-
 if __name__=='__main__':
     main()

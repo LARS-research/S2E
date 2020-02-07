@@ -1,5 +1,5 @@
 #!/bin/bash
-for((i=2;i<=5;i=i+1))
+for((i=16;i<=20;i=i+1))
 # for((i=1;i<=1;i=i+1))
 do
 	echo "Lap:" $i

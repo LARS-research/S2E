@@ -171,7 +171,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
             print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
-                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
+                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.item(), loss_2.item(), np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
     train_acc2=float(train_correct2)/float(train_total2)
@@ -221,7 +221,12 @@ def black_box_function(opt_param):
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=opt_param['w']*(1-np.exp(-opt_param['b1']*np.power(np.arange(args.n_epoch,dtype=float),opt_param['a1'])))+(1-opt_param['w'])*(1-1/np.power((opt_param['b2']*np.arange(args.n_epoch,dtype=float)+1),opt_param['a2']))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param['a3'])*opt_param['b3']
+    # rate_schedule=opt_param['w']*(1-np.exp(-opt_param['b1']*np.power(np.arange(args.n_epoch,dtype=float),opt_param['a1'])))+(1-opt_param['w'])*(1-1/np.power((opt_param['b2']*np.arange(args.n_epoch,dtype=float)+1),opt_param['a2']))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param['a3'])*opt_param['b3']
+    rate_schedule=opt_param['w1']*(1-np.exp(-opt_param['b1']*np.power(np.arange(args.n_epoch,dtype=float),opt_param['a1'])))\
++(1-opt_param['w1'])*opt_param['w2']*(1-1/np.power((opt_param['b2']*np.arange(args.n_epoch,dtype=float)+1),opt_param['a2']))\
++(1-opt_param['w1'])*(1-opt_param['w2'])*(1-np.log(1+opt_param['a5'])/np.log(1+opt_param['a5']+opt_param['b5']*np.arange(args.n_epoch,dtype=float)))\
+-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param['a3'])*opt_param['b3']\
+-np.log(1+np.power(np.arange(args.n_epoch,dtype=float),opt_param['a4']))/np.log(1+np.power(args.n_epoch,opt_param['a4']))*opt_param['b4']
     print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
@@ -255,7 +260,7 @@ def black_box_function(opt_param):
 
 def main():
      
-    space = {'w': hp.uniform('w',0,1),'a1': hp.uniform('a1',0,1),'b1': hp.uniform('b1',0,0.5),'a2': hp.uniform('a2',0,1),'b2': hp.uniform('b2',0,0.5),'a3': hp.uniform('a3',0,2),'b3': hp.uniform('b3',0,0.5)}
+    space = {'w1': hp.uniform('w1',0,1),'w2': hp.uniform('w2',0,1),'a1': hp.uniform('a1',0,1),'b1': hp.uniform('b1',0,0.5),'a2': hp.uniform('a2',0,1),'b2': hp.uniform('b2',0,0.5),'a3': hp.uniform('a3',0,2),'b3': hp.uniform('b3',0,0.5), 'a4': hp.uniform('a4',0,2),'b4':hp.uniform('b4',0,0.5), 'a5':hp.uniform('a5',0,1),'b5':hp.uniform('b5',0,0.5)}
     trials = Trials()
     np.random.seed(args.seed)
     best = fmin(black_box_function, rstate=np.random.RandomState(seed=args.seed),space=space,algo=tpe.suggest,max_evals=args.n_iter*args.n_samples,trials=trials)

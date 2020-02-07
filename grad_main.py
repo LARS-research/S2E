@@ -5,11 +5,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as transforms
+from data.cifar import CIFAR10, CIFAR100
 from data.mnist import MNIST
-from model import MLP
+from model import CNN
 import argparse, sys
 import numpy as np
 import datetime
+import shutil
 
 from loss import loss_coteaching
 from scipy.special import psi
@@ -43,25 +45,28 @@ batch_size = 128
 learning_rate = args.lr 
 
 # load dataset
+input_channel=3
 num_classes=10
-args.epoch_decay_start = 200
+args.top_bn = False
+args.epoch_decay_start = 80
+# args.epoch_decay_start = 200
 args.n_epoch = 200
-train_dataset = MNIST(root='./data/',
+train_dataset = CIFAR10(root='./data/',
                             download=True,  
                             train=True, 
                             transform=transforms.ToTensor(),
                             noise_type=args.noise_type,
                             noise_rate=args.noise_rate
-                     )
-    
-test_dataset = MNIST(root='./data/',
-                           download=True,  
-                           train=False, 
-                           transform=transforms.ToTensor(),
-                           noise_type=args.noise_type,
-                           noise_rate=args.noise_rate
-                    )
-    
+                       )
+
+test_dataset = CIFAR10(root='./data/',
+                            download=True,  
+                            train=False, 
+                            transform=transforms.ToTensor(),
+                            noise_type=args.noise_type,
+                            noise_rate=args.noise_rate
+                      )
+
 if args.forget_rate is None:
     forget_rate=args.noise_rate
 else:
@@ -73,28 +78,26 @@ noise_or_not = train_dataset.noise_or_not
 mom1 = 0.9
 mom2 = 0.1
 alpha_plan=np.ones(args.n_epoch,dtype=float)*learning_rate
-'''
-alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
-alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
-alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
-'''
-alpha_plan[80:]=learning_rate-learning_rate*np.arange(args.n_epoch-80,dtype=float)/(args.n_epoch-80)
+# alpha_plan[:int(args.n_epoch*0.5)] = [learning_rate] * int(args.n_epoch*0.5)
+# alpha_plan[int(args.n_epoch*0.5):int(args.n_epoch*0.75)] = [learning_rate*0.1] * int(args.n_epoch*0.25)
+# alpha_plan[int(args.n_epoch*0.75):] = [learning_rate*0.01] * int(args.n_epoch*0.25)
 beta1_plan = [mom1] * args.n_epoch
-beta1_plan[80:]=[mom2] * (args.n_epoch-80)
-# print(alpha_plan,beta1_plan)
+for i in range(args.epoch_decay_start, args.n_epoch):
+    alpha_plan[i] = float(args.n_epoch - i) / (args.n_epoch - args.epoch_decay_start) * learning_rate
+    beta1_plan[i] = mom2
 
 def adjust_learning_rate(optimizer, epoch):
     for param_group in optimizer.param_groups:
         param_group['lr']=alpha_plan[epoch]
         param_group['momentum']=beta1_plan[epoch] # Only change beta1
         
-save_dir = args.result_dir +'/mnist/'
+save_dir = args.result_dir +'/cifar10/'
 
 if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='mnist_grad_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='cifar10_grad_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -170,7 +173,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
             print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
-                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
+                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.item(), loss_2.item(), np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
     train_acc2=float(train_correct2)/float(train_total2)
@@ -210,17 +213,22 @@ def black_box_function(opt_param):
     mean_pure_ratio2=0
 
     print('building model...')
-    cnn1 = MLP(n_outputs=num_classes)
+    cnn1 = CNN(n_outputs=num_classes)
     cnn1.cuda()
     print(cnn1.parameters)
     optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
-    cnn2 = MLP(n_outputs=num_classes)
+    cnn2 = CNN(n_outputs=num_classes)
     cnn2.cuda()
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    # rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))\
++(1-opt_param[0])*opt_param[7]*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))\
++(1-opt_param[0])*(1-opt_param[7])*(1-np.log(1+opt_param[8])/np.log(1+opt_param[8]+opt_param[9]*np.arange(args.n_epoch,dtype=float)))\
+-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]\
+-np.log(1+np.power(np.arange(args.n_epoch,dtype=float),opt_param[11]))/np.log(1+np.power(args.n_epoch,opt_param[11]))*opt_param[10]
     print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
@@ -257,23 +265,27 @@ def main():
     np.random.seed(args.seed)
     cur_acc=np.zeros(args.n_samples)
     idx=np.zeros(args.n_samples)
-    max_pt=np.zeros(7)
-    hyphyp=np.ones(14)
-    hypgrad=np.zeros((14,1))
-    fisher=np.ones((14,14))
+    num_param=12
+    max_pt=np.zeros(num_param)
+    hyphyp=np.ones(2*num_param)
+    hypgrad=np.zeros((2*num_param,1))
+    fisher=np.ones((2*num_param,2*num_param))
     for iii in range(args.n_iter):
         print('Distribution:',hyphyp)
-        cur_param=np.zeros((args.n_samples,7))
-        loggrad=np.zeros((args.n_samples,14,1))
+        cur_param=np.zeros((args.n_samples,num_param))
+        loggrad=np.zeros((args.n_samples,2*num_param,1))
         for jjj in range(args.n_samples):
-            for kkk in range(7):
+            for kkk in range(num_param):
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
                 loggrad[jjj][2*kkk][0]=np.log(cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk])
                 loggrad[jjj][2*kkk+1][0]=np.log(1-cur_param[jjj][kkk])+psi(hyphyp[2*kkk]+hyphyp[2*kkk+1])-psi(hyphyp[2*kkk+1])
             cur_param[jjj][2]*=0.5
             cur_param[jjj][4]*=0.5
+            cur_param[jjj][9]*=0.5
             cur_param[jjj][5]/=0.5
             cur_param[jjj][6]*=0.5
+            cur_param[jjj][11]/=0.5
+            cur_param[jjj][10]*=0.5
             cur_acc[jjj]=black_box_function(cur_param[jjj])
         idx=np.argsort(cur_acc)
         hypgrad=hypgrad+loggrad[idx[-1]]

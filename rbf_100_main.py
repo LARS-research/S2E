@@ -14,7 +14,6 @@ import datetime
 import shutil
 
 from loss import loss_coteaching
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type = float, default = 0.001)
@@ -94,7 +93,7 @@ if not os.path.exists(save_dir):
     os.system('mkdir -p %s' % save_dir)
 
 nowTime=datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-model_str='cifar100_bayes_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
+model_str='cifar100_rbf_coteaching_'+args.noise_type+'_'+str(args.noise_rate)+("-%s.txt" % args.seed)
 txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
@@ -170,7 +169,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
             print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
-                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
+                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.item(), loss_2.item(), np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
     train_acc2=float(train_correct2)/float(train_total2)
@@ -220,8 +219,8 @@ def black_box_function(opt_param):
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=opt_param['w']*(1-np.exp(-opt_param['b1']*np.power(np.arange(args.n_epoch,dtype=float),opt_param['a1'])))+(1-opt_param['w'])*(1-1/np.power((opt_param['b2']*np.arange(args.n_epoch,dtype=float)+1),opt_param['a2']))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param['a3'])*opt_param['b3']
-    print('Schedule:',rate_schedule,opt_param)
+    rate_schedule=opt_param.copy()
+    print('Schedule:',rate_schedule)
     
     epoch=0
     train_acc1=0
@@ -250,14 +249,81 @@ def black_box_function(opt_param):
         with open(txtfile, "a") as myfile:
             myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
-    return -(test_acc1+test_acc2)/200
+    return (test_acc1+test_acc2)/200
 
 def main():
-    
-    space = {'w': hp.uniform('w',0,1),'a1': hp.uniform('a1',0,1),'b1': hp.uniform('b1',0,0.5),'a2': hp.uniform('a2',0,1),'b2': hp.uniform('b2',0,0.5),'a3': hp.uniform('a3',0,2),'b3': hp.uniform('b3',0,0.5)}
-    trials = Trials()
+     
     np.random.seed(args.seed)
-    best = fmin(black_box_function, rstate=np.random.RandomState(seed=args.seed),space=space,algo=tpe.suggest,max_evals=args.n_iter*args.n_samples,trials=trials)
+    cur_acc=0
+    max_acc=0
+    num_param=10
+    cur_param=np.zeros(args.n_epoch)
+    max_pt=np.zeros(args.n_epoch)
+    for iii in range(args.n_iter):
+        for jjj in range(args.n_samples):
+            cur_mu = np.random.random(num_param)
+            cur_s = np.random.random(num_param)*0.5
+            cur_w = np.random.random(num_param)
+            x = np.arange(args.n_epoch)/args.n_epoch
+            cur_rt = np.zeros(args.n_epoch)
+            for kkk in range(6):
+                cur_rt=cur_rt+cur_w[kkk]*np.exp(-np.power(x-cur_mu[kkk],2)/(2*cur_s[kkk]*cur_s[kkk]))
+            cur_rt=np.minimum(cur_rt,1)
+            cur_param=cur_rt.copy()
+            cur_acc=black_box_function(cur_param)
+            if max_acc<cur_acc:
+                max_acc=cur_acc
+                max_pt=cur_param.copy()
+    '''
+    rate_schedule=np.ones(args.n_epoch)*forget_rate
+    rate_schedule[:10]=np.arange(10,dtype=float)/10*forget_rate
+    # rate_schedule[10:]=np.arange(args.n_epoch-10,dtype=float)/(args.n_epoch-10)*forget_rate+forget_rate
+    rate_schedule=np.zeros(args.n_epoch)
+    print(rate_schedule)
+    '''
+    rate_schedule=max_pt.copy()
+    print('Final Schedule:',rate_schedule)
+
+    mean_pure_ratio1=0
+    mean_pure_ratio2=0
+
+    print('building model...')
+    cnn1 = MLP(n_outputs=num_classes)
+    cnn1.cuda()
+    print(cnn1.parameters)
+    optimizer1 = torch.optim.Adam(cnn1.parameters(), lr=learning_rate)
     
+    cnn2 = MLP(n_outputs=num_classes)
+    cnn2.cuda()
+    print(cnn2.parameters)
+    optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
+
+    epoch=0
+    train_acc1=0
+    train_acc2=0
+    # evaluate models with random weights
+    test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+    print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+    # save results
+    with open(txtfile, "a") as myfile:
+        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+
+    # training
+    for epoch in range(1, args.n_epoch):
+        # train models
+        cnn1.train()
+        adjust_learning_rate(optimizer1, epoch)
+        cnn2.train()
+        adjust_learning_rate(optimizer2, epoch)
+        train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
+        # evaluate models
+        test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
+        # save results
+        mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
+        mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
+        print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
+        with open(txtfile, "a") as myfile:
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+
 if __name__=='__main__':
     main()

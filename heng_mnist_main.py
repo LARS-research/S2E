@@ -170,7 +170,7 @@ def train(train_loader,epoch, model1, optimizer1, model2, optimizer2, rate_sched
         optimizer2.step()
         if (i+1) % args.print_freq == 0:
             print ('Epoch [%d/%d], Iter [%d/%d] Training Accuracy1: %.4f, Training Accuracy2: %.4f, Loss1: %.4f, Loss2: %.4f, Pure Ratio1: %.4f, Pure Ratio2 %.4f' 
-                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.data[0], loss_2.data[0], np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
+                  %(epoch+1, args.n_epoch, i+1, len(train_dataset)//batch_size, prec1, prec2, loss_1.item(), loss_2.item(), np.sum(pure_ratio_1_list)/len(pure_ratio_1_list), np.sum(pure_ratio_2_list)/len(pure_ratio_2_list)))
 
     train_acc1=float(train_correct)/float(train_total)
     train_acc2=float(train_correct2)/float(train_total2)
@@ -220,7 +220,12 @@ def black_box_function(opt_param):
     print(cnn2.parameters)
     optimizer2 = torch.optim.Adam(cnn2.parameters(), lr=learning_rate)
     
-    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    # rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))+(1-opt_param[0])*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]
+    rate_schedule=opt_param[0]*(1-np.exp(-opt_param[2]*np.power(np.arange(args.n_epoch,dtype=float),opt_param[1])))\
++(1-opt_param[0])*opt_param[7]*(1-1/np.power((opt_param[4]*np.arange(args.n_epoch,dtype=float)+1),opt_param[3]))\
++(1-opt_param[0])*(1-opt_param[7])*(1-np.log(1+opt_param[8])/np.log(1+opt_param[8]+opt_param[9]*np.arange(args.n_epoch,dtype=float)))\
+-np.power(np.arange(args.n_epoch,dtype=float)/args.n_epoch,opt_param[5])*opt_param[6]\
+-np.log(1+np.power(np.arange(args.n_epoch,dtype=float),opt_param[11]))/np.log(1+np.power(args.n_epoch,opt_param[11]))*opt_param[10]
     print('Schedule:',rate_schedule,opt_param)
     
     epoch=0
@@ -257,17 +262,18 @@ def main():
     np.random.seed(args.seed)
     cur_acc=np.zeros(args.n_samples)
     idx=np.zeros(args.n_samples)
-    max_pt=np.zeros(7)
-    hyphyp=np.ones(14)
-    hypgrad=np.zeros((14,1))
-    hessian=np.zeros((14,14))
+    num_param=12
+    max_pt=np.zeros(num_param)
+    hyphyp=np.ones(num_param*2)
+    hypgrad=np.zeros((num_param*2,1))
+    hessian=np.zeros((num_param*2,num_param*2))
     for iii in range(args.n_iter):
         print('Distribution:',hyphyp)
-        cur_param=np.zeros((args.n_samples,7))
-        loggrad=np.zeros((args.n_samples,14,1))
-        loghess=np.zeros((args.n_samples,14,14))
+        cur_param=np.zeros((args.n_samples,num_param))
+        loggrad=np.zeros((args.n_samples,num_param*2,1))
+        loghess=np.zeros((args.n_samples,num_param*2,num_param*2))
         for jjj in range(args.n_samples):
-            for kkk in range(7):
+            for kkk in range(num_param):
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
                 cur_param[jjj][kkk]=np.random.beta(hyphyp[2*kkk],hyphyp[2*kkk+1])
@@ -279,8 +285,11 @@ def main():
                 loghess[jjj][2*kkk+1][2*kkk+1]=polygamma(1,hyphyp[2*kkk]+hyphyp[2*kkk+1])-polygamma(1,hyphyp[2*kkk+1])
             cur_param[jjj][2]*=0.5
             cur_param[jjj][4]*=0.5
+            cur_param[jjj][9]*=0.5
             cur_param[jjj][5]/=0.5
             cur_param[jjj][6]*=0.5
+            cur_param[jjj][11]/=0.5
+            cur_param[jjj][10]*=0.5
             cur_acc[jjj]=black_box_function(cur_param[jjj])
 
         idx=np.argsort(cur_acc)
