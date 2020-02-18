@@ -101,15 +101,27 @@ txtfile=save_dir+"/"+model_str
 
 # Data Loader (Input Pipeline)
 print('loading dataset...')
+num_test = len(test_dataset)
+indices = list(range(num_test))
+split = int(np.floor(0.5 * num_test))
+
 train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                            batch_size=batch_size, 
                                            num_workers=args.num_workers,
                                            drop_last=True,
                                            shuffle=True)
     
+val_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
+                                           batch_size=batch_size,
+                                           num_workers=args.num_workers,
+                                           sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
+                                           drop_last=True,
+                                           shuffle=False)
+
 test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
                                           batch_size=batch_size, 
                                           num_workers=args.num_workers,
+                                          sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_test]),
                                           drop_last=True,
                                           shuffle=False)
 
@@ -234,11 +246,12 @@ def black_box_function(opt_param):
     train_acc1=0
     train_acc2=0
     # evaluate models with random weights
+    val_acc1, val_acc2=evaluate(val_loader, cnn1, cnn2)
     test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
     print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %% Pure Ratio1 %.4f %% Pure Ratio2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
     # save results
     with open(txtfile, "a") as myfile:
-        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+        myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' ' +str(val_acc1)+' ' +str(val_acc2)+' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     # training
     for epoch in range(1, args.n_epoch):
@@ -249,13 +262,14 @@ def black_box_function(opt_param):
         adjust_learning_rate(optimizer2, epoch)
         train_acc1, train_acc2, pure_ratio_1_list, pure_ratio_2_list=train(train_loader, epoch, cnn1, optimizer1, cnn2, optimizer2, rate_schedule)
         # evaluate models
+        val_acc1, val_acc2=evaluate(val_loader, cnn1, cnn2)
         test_acc1, test_acc2=evaluate(test_loader, cnn1, cnn2)
         # save results
         mean_pure_ratio1 = sum(pure_ratio_1_list)/len(pure_ratio_1_list)
         mean_pure_ratio2 = sum(pure_ratio_2_list)/len(pure_ratio_2_list)
         print('Epoch [%d/%d] Test Accuracy on the %s test images: Model1 %.4f %% Model2 %.4f %%, Pure Ratio 1 %.4f %%, Pure Ratio 2 %.4f %%' % (epoch+1, args.n_epoch, len(test_dataset), test_acc1, test_acc2, mean_pure_ratio1, mean_pure_ratio2))
         with open(txtfile, "a") as myfile:
-            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
+            myfile.write(str(int(epoch)) + ' '  + str(train_acc1) +' '  + str(train_acc2) +' ' +str(val_acc1)+' ' +str(val_acc2)+' '  + str(test_acc1) + " " + str(test_acc2) + ' '  + str(mean_pure_ratio1) + ' '  + str(mean_pure_ratio2) + ' ' + str(rate_schedule[epoch]) + "\n")
 
     return (test_acc1+test_acc2)/200
 
