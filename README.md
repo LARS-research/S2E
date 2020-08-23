@@ -27,3 +27,6 @@ python heng_100_main.py --noise_type symmetric --noise_rate 0.5 --num_workers 1 
 ```
 
 Or see scripts (.sh files) for a quick start.
+
+## New Opportunities
+- Interns, research assistants, and researcher positions are available. See [requirement](http://www.cse.ust.hk/~qyaoaa/pages/job-ad.pdf)
